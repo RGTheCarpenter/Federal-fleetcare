@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.fleetcare-secret
+fleetcare.db
+.env
+fleetcare-render-package.zip

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FleetCare Launcher</title>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      background: linear-gradient(180deg, #f4eadb, #efe3cf);
+      color: #18211c;
+    }
+    .card {
+      width: min(560px, calc(100% - 32px));
+      padding: 28px;
+      border-radius: 24px;
+      background: rgba(255, 250, 240, 0.95);
+      box-shadow: 0 26px 60px rgba(58, 51, 37, 0.16);
+    }
+    a {
+      color: #11513f;
+      font-weight: 700;
+    }
+    code {
+      background: rgba(24, 33, 28, 0.08);
+      padding: 2px 6px;
+      border-radius: 6px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>FleetCare Full Stack</h1>
+    <p>This project now runs as a local Python web app with login, SQLite, fuel tracking, assignments, PDF reports, and alerts.</p>
+    <p>Start it with <code>python server.py</code>, then open <a href="http://127.0.0.1:8000">http://127.0.0.1:8000</a>.</p>
+    <p>More details are in <code>README.md</code>.</p>
+  </div>
+</body>
+</html>
