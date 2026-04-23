@@ -4,3 +4,7 @@ __pycache__/
 fleetcare.db
 .env
 fleetcare-render-package.zip
+node_modules/
+android/
+ios/
+dist/

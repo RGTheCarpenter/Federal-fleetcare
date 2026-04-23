@@ -1,0 +1,20 @@
+{
+  "appId": "com.rgthecarpenter.federalfleetcare",
+  "appName": "FleetCare",
+  "webDir": "static-capacitor-shell",
+  "server": {
+    "url": "https://fleetcare-web.onrender.com",
+    "cleartext": false
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1200,
+      "backgroundColor": "#f4eadb",
+      "showSpinner": false
+    },
+    "StatusBar": {
+      "style": "DARK",
+      "backgroundColor": "#f4eadb"
+    }
+  }
+}

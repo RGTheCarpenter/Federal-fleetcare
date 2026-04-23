@@ -100,6 +100,19 @@ FleetCare can be installed on iPhone and Android as a browser-based phone app.
 
 See `INSTALL_PHONE_APP.md` for step-by-step instructions.
 
+## Native app wrapper
+
+This project is also scaffolded for a real native wrapper using Capacitor.
+
+Files added for that path:
+
+- `package.json`
+- `capacitor.config.json`
+- `static-capacitor-shell/index.html`
+- `MOBILE_APP_SETUP.md`
+
+That setup is intended for generating Android and iOS store builds on a machine with Node.js, Android Studio, and Xcode.
+
 ## Files
 
 - `server.py`: app entry point
