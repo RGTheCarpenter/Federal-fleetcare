@@ -544,11 +544,13 @@ class FleetCareHandler(BaseHTTPRequestHandler):
             </div>
           </header>
 
-          <section class="report-panel">
-            <div>
-              <p class="section-kicker">Reports</p>
-              <h2>Download PDF report</h2>
-            </div>
+          <details class="report-panel">
+            <summary>
+              <span>
+                <span class="section-kicker">Reports</span>
+                <strong>Download PDF report</strong>
+              </span>
+            </summary>
             <form method="get" action="/reports/fleet.pdf" class="report-form">
               <label>
                 <span>Report month</span>
@@ -565,7 +567,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
               <button type="submit" class="primary-btn">Download PDF</button>
             </form>
             <p class="muted report-help">Choose a month, or leave month blank and choose a custom from/to date range.</p>
-          </section>
+          </details>
 
           <nav class="quick-links" aria-label="Dashboard sections">
             {render_tab_link("vehicles", "Vehicles", active_tab)}

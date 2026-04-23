@@ -119,9 +119,31 @@ a {
   box-shadow: var(--shadow);
 }
 
-.report-panel h2 {
+.report-panel summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.report-panel summary::-webkit-details-marker {
+  display: none;
+}
+
+.report-panel summary strong {
+  display: block;
   margin: 4px 0 0;
   font-size: 1.35rem;
+}
+
+.report-panel summary::after {
+  content: "Open filters";
+  display: inline-flex;
+  margin-top: 10px;
+  color: var(--accent-strong);
+  font-weight: 700;
+}
+
+.report-panel[open] summary::after {
+  content: "Hide filters";
 }
 
 .report-form {
@@ -391,8 +413,8 @@ textarea {
 
   .page-shell,
   .auth-shell {
-    width: min(100%, calc(100% - 20px));
-    padding: 16px 0 24px;
+    width: min(100%, calc(100% - 14px));
+    padding: 10px 0 20px;
   }
 
   .panel,
@@ -402,16 +424,17 @@ textarea {
   }
 
   .panel {
-    padding: 18px;
+    padding: 14px;
   }
 
   .hero {
-    margin-bottom: 18px;
+    gap: 12px;
+    margin-bottom: 12px;
   }
 
   .hero h1,
   .auth-card h1 {
-    font-size: clamp(1.8rem, 10vw, 2.6rem);
+    font-size: clamp(1.65rem, 10vw, 2.35rem);
   }
 
   .panel h2 {
@@ -419,17 +442,103 @@ textarea {
   }
 
   .quick-links {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    margin: 0 -7px 12px;
+    padding: 8px 7px;
     overflow-x: auto;
     flex-wrap: nowrap;
-    padding-bottom: 4px;
+    background: rgba(244, 234, 219, 0.94);
+    backdrop-filter: blur(10px);
   }
 
   .quick-link {
     white-space: nowrap;
+    min-height: 40px;
+    padding: 9px 12px;
   }
 
   .span-two,
   .full-span {
     grid-column: auto;
+  }
+}
+
+@media (max-width: 640px) {
+  body {
+    background: #f4eadb;
+  }
+
+  .kicker,
+  .section-kicker {
+    font-size: 0.68rem;
+  }
+
+  .hero {
+    display: grid;
+  }
+
+  .hero-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .hero-actions form,
+  .hero-actions button,
+  .hero-actions .ghost-btn {
+    width: 100%;
+  }
+
+  .report-panel {
+    margin-bottom: 12px;
+    padding: 14px;
+    border-radius: 18px;
+  }
+
+  .report-panel summary strong {
+    font-size: 1.05rem;
+  }
+
+  .stats-grid {
+    display: flex;
+    gap: 10px;
+    margin: 0 -7px 12px;
+    padding: 0 7px 4px;
+    overflow-x: auto;
+  }
+
+  .stat-card {
+    min-width: 132px;
+    padding: 12px;
+    border-radius: 18px;
+    box-shadow: none;
+  }
+
+  .stat-card strong {
+    font-size: 1.3rem;
+  }
+
+  .layout {
+    gap: 12px;
+  }
+
+  .panel-header {
+    margin-bottom: 12px;
+  }
+
+  .list-item,
+  .empty-state,
+  .flash {
+    padding: 14px;
+  }
+
+  input,
+  select,
+  textarea,
+  .primary-btn,
+  .ghost-btn,
+  .danger-btn {
+    min-height: 44px;
   }
 }
