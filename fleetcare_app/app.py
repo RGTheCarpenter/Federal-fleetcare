@@ -535,7 +535,6 @@ class FleetCareHandler(BaseHTTPRequestHandler):
             <div>
               <p class="kicker">Fleet operations</p>
               <h1>{h(user["company_name"])}</h1>
-              <p class="hero-copy">A Drivvo-style operations workspace for maintenance, fuel, driver assignments, and alerts.</p>
             </div>
             <div class="hero-actions">
               <form method="post" action="/logout">
