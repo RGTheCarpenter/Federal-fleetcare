@@ -528,8 +528,6 @@ class FleetCareHandler(BaseHTTPRequestHandler):
 
         alerts = collect_alerts(reminders, assignments)
         stats = build_stats(vehicles, maintenance, fuel_logs, reminders)
-        report_query = urlencode({"vehicle_id": route.query.split("vehicle_id=")[-1]}) if "vehicle_id=" in route.query else ""
-        report_link = "/reports/fleet.pdf" + (f"?{report_query}" if report_query else "")
 
         content = f"""
         <div class="page-shell">
@@ -540,12 +538,34 @@ class FleetCareHandler(BaseHTTPRequestHandler):
               <p class="hero-copy">A Drivvo-style operations workspace for maintenance, fuel, driver assignments, and alerts.</p>
             </div>
             <div class="hero-actions">
-              <a class="ghost-btn" href="{report_link}">Download PDF report</a>
               <form method="post" action="/logout">
                 <button type="submit" class="ghost-btn">Sign out</button>
               </form>
             </div>
           </header>
+
+          <section class="report-panel">
+            <div>
+              <p class="section-kicker">Reports</p>
+              <h2>Download PDF report</h2>
+            </div>
+            <form method="get" action="/reports/fleet.pdf" class="report-form">
+              <label>
+                <span>Report month</span>
+                <input type="month" name="month">
+              </label>
+              <label>
+                <span>From date</span>
+                <input type="date" name="start_date">
+              </label>
+              <label>
+                <span>To date</span>
+                <input type="date" name="end_date">
+              </label>
+              <button type="submit" class="primary-btn">Download PDF</button>
+            </form>
+            <p class="muted report-help">Choose a month, or leave month blank and choose a custom from/to date range.</p>
+          </section>
 
           <nav class="quick-links" aria-label="Dashboard sections">
             <button class="quick-link is-active" type="button" data-tab-target="vehicles">Vehicles</button>
@@ -673,6 +693,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
 
         query = parse_qs(route.query)
         vehicle_id = query.get("vehicle_id", [""])[0]
+        start_date, end_date, report_period = parse_report_period(query)
 
         with get_connection() as connection:
             vehicle_filter = ""
@@ -685,30 +706,42 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 f"SELECT v.* FROM vehicles v WHERE v.user_id = ?{vehicle_filter} ORDER BY v.name",
                 tuple(params),
             ).fetchall()
+            maintenance_filter, maintenance_params = report_date_filter(
+                "m.service_date",
+                start_date,
+                end_date,
+                params,
+            )
             maintenance = connection.execute(
                 f"""
                 SELECT m.service_date, m.service_type, m.cost, v.name AS vehicle_name, m.odometer
                 FROM maintenance_logs m
                 JOIN vehicles v ON v.id = m.vehicle_id
-                WHERE m.user_id = ?{vehicle_filter.replace('v.id', 'm.vehicle_id')}
+                WHERE m.user_id = ?{vehicle_filter.replace('v.id', 'm.vehicle_id')}{maintenance_filter}
                 ORDER BY m.service_date DESC
                 LIMIT 20
                 """,
-                tuple(params),
+                tuple(maintenance_params),
             ).fetchall()
+            fuel_filter, fuel_params = report_date_filter(
+                "f.fill_date",
+                start_date,
+                end_date,
+                params,
+            )
             fuel_logs = connection.execute(
                 f"""
                 SELECT f.fill_date, f.total_cost, f.liters, v.name AS vehicle_name, f.odometer
                 FROM fuel_logs f
                 JOIN vehicles v ON v.id = f.vehicle_id
-                WHERE f.user_id = ?{vehicle_filter.replace('v.id', 'f.vehicle_id')}
+                WHERE f.user_id = ?{vehicle_filter.replace('v.id', 'f.vehicle_id')}{fuel_filter}
                 ORDER BY f.fill_date DESC
                 LIMIT 20
                 """,
-                tuple(params),
+                tuple(fuel_params),
             ).fetchall()
 
-        lines = ["Fleet summary", ""]
+        lines = [f"Report period: {report_period}", "", "Fleet summary", ""]
         for vehicle in vehicles:
             lines.append(
                 f"Vehicle: {vehicle['name']} | Plate: {vehicle['plate']} | Odometer: {vehicle['odometer']} km | Status: {vehicle['status']}"
@@ -1136,6 +1169,52 @@ def build_stats(vehicles, maintenance, fuel_logs, reminders):
         "avg_fuel_price": avg_fuel_price,
         "reminders": len(reminders),
     }
+
+
+def parse_report_period(query):
+    month = query.get("month", [""])[0]
+    if month:
+        try:
+            start = datetime.strptime(month, "%Y-%m").date().replace(day=1)
+            if start.month == 12:
+                end = start.replace(year=start.year + 1, month=1)
+            else:
+                end = start.replace(month=start.month + 1)
+            return start.isoformat(), end.isoformat(), start.strftime("%B %Y")
+        except ValueError:
+            pass
+
+    start_date = query.get("start_date", [""])[0]
+    end_date = query.get("end_date", [""])[0]
+    start = parse_iso_date(start_date)
+    end = parse_iso_date(end_date)
+
+    if start and end and end < start:
+        start, end = end, start
+
+    if start and end:
+        return start.isoformat(), end.isoformat(), f"{start.isoformat()} to {end.isoformat()}"
+    if start:
+        return start.isoformat(), None, f"From {start.isoformat()}"
+    if end:
+        return None, end.isoformat(), f"Through {end.isoformat()}"
+    return None, None, "All available dates"
+
+
+def report_date_filter(column, start_date, end_date, base_params):
+    conditions = []
+    params = list(base_params)
+
+    if start_date:
+        conditions.append(f"{column} >= ?")
+        params.append(start_date)
+    if end_date:
+        conditions.append(f"{column} <= ?")
+        params.append(end_date)
+
+    if not conditions:
+        return "", params
+    return " AND " + " AND ".join(conditions), params
 
 
 def parse_iso_date(value):

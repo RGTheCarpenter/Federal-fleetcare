@@ -108,6 +108,33 @@ a {
   margin-bottom: 20px;
 }
 
+.report-panel {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 20px;
+  padding: 18px;
+  border-radius: 24px;
+  background: rgba(255, 250, 240, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.68);
+  box-shadow: var(--shadow);
+}
+
+.report-panel h2 {
+  margin: 4px 0 0;
+  font-size: 1.35rem;
+}
+
+.report-form {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+
+.report-help {
+  margin: 0;
+}
+
 .quick-link {
   display: inline-flex;
   align-items: center;
@@ -356,7 +383,8 @@ textarea {
   .layout,
   .stats-grid,
   .split-grid,
-  .form-grid {
+  .form-grid,
+  .report-form {
     grid-template-columns: 1fr;
     display: grid;
   }
