@@ -69,8 +69,16 @@ class FleetCareHandler(BaseHTTPRequestHandler):
 
         if path == "/vehicles/add":
             return self.handle_vehicle_add(user, form)
+        if path == "/vehicles/update":
+            return self.handle_vehicle_update(user, form)
+        if path == "/vehicles/delete":
+            return self.handle_vehicle_delete(user, form)
         if path == "/drivers/add":
             return self.handle_driver_add(user, form)
+        if path == "/drivers/update":
+            return self.handle_driver_update(user, form)
+        if path == "/drivers/delete":
+            return self.handle_driver_delete(user, form)
         if path == "/assignments/add":
             return self.handle_assignment_add(user, form)
         if path == "/maintenance/add":
@@ -198,6 +206,39 @@ class FleetCareHandler(BaseHTTPRequestHandler):
 
         self.redirect("/dashboard#vehicles")
 
+    def handle_vehicle_update(self, user, form):
+        vehicle_id = int(form.get("vehicle_id") or 0)
+        with get_connection() as connection:
+            connection.execute(
+                """
+                UPDATE vehicles
+                SET name = ?, plate = ?, model = ?, year = ?, odometer = ?, status = ?
+                WHERE id = ? AND user_id = ?
+                """,
+                (
+                    form.get("name", ""),
+                    form.get("plate", "").upper(),
+                    form.get("model", ""),
+                    int(form.get("year") or 0) or None,
+                    int(form.get("odometer") or 0),
+                    form.get("status", "Active"),
+                    vehicle_id,
+                    user["id"],
+                ),
+            )
+
+        self.redirect("/dashboard#vehicles")
+
+    def handle_vehicle_delete(self, user, form):
+        vehicle_id = int(form.get("vehicle_id") or 0)
+        with get_connection() as connection:
+            connection.execute(
+                "DELETE FROM vehicles WHERE id = ? AND user_id = ?",
+                (vehicle_id, user["id"]),
+            )
+
+        self.redirect("/dashboard#vehicles")
+
     def handle_driver_add(self, user, form):
         with get_connection() as connection:
             connection.execute(
@@ -213,6 +254,38 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                     form.get("email", ""),
                     form.get("status", "Active"),
                 ),
+            )
+
+        self.redirect("/dashboard#drivers")
+
+    def handle_driver_update(self, user, form):
+        driver_id = int(form.get("driver_id") or 0)
+        with get_connection() as connection:
+            connection.execute(
+                """
+                UPDATE drivers
+                SET name = ?, license_number = ?, phone = ?, email = ?, status = ?
+                WHERE id = ? AND user_id = ?
+                """,
+                (
+                    form.get("name", ""),
+                    form.get("license_number", ""),
+                    form.get("phone", ""),
+                    form.get("email", ""),
+                    form.get("status", "Active"),
+                    driver_id,
+                    user["id"],
+                ),
+            )
+
+        self.redirect("/dashboard#drivers")
+
+    def handle_driver_delete(self, user, form):
+        driver_id = int(form.get("driver_id") or 0)
+        with get_connection() as connection:
+            connection.execute(
+                "DELETE FROM drivers WHERE id = ? AND user_id = ?",
+                (driver_id, user["id"]),
             )
 
         self.redirect("/dashboard#drivers")
@@ -846,6 +919,28 @@ def render_vehicles(vehicles):
           </div>
           <div class="muted">{h(vehicle['model'] or 'Model not set')} {('- ' + str(vehicle['year'])) if vehicle['year'] else ''}</div>
           <div class="muted">{vehicle['odometer']} km</div>
+          <details class="edit-box">
+            <summary>Edit vehicle</summary>
+            <form method="post" action="/vehicles/update" class="form-grid compact-form">
+              <input type="hidden" name="vehicle_id" value="{vehicle['id']}">
+              <label><span>Name</span><input type="text" name="name" value="{h(vehicle['name'])}" required></label>
+              <label><span>Plate</span><input type="text" name="plate" value="{h(vehicle['plate'])}" required></label>
+              <label><span>Model</span><input type="text" name="model" value="{h(vehicle['model'] or '')}"></label>
+              <label><span>Year</span><input type="number" name="year" min="1990" max="2100" value="{h(vehicle['year'] or '')}"></label>
+              <label><span>Odometer</span><input type="number" name="odometer" min="0" value="{vehicle['odometer']}" required></label>
+              <label>
+                <span>Status</span>
+                <select name="status">
+                  {render_status_options(vehicle['status'], ['Active', 'In service', 'Inactive'])}
+                </select>
+              </label>
+              <button type="submit" class="primary-btn">Save changes</button>
+            </form>
+            <form method="post" action="/vehicles/delete" class="delete-form" onsubmit="return confirm('Delete this vehicle and its related records?');">
+              <input type="hidden" name="vehicle_id" value="{vehicle['id']}">
+              <button type="submit" class="danger-btn">Delete vehicle</button>
+            </form>
+          </details>
         </article>
         """
         for vehicle in vehicles
@@ -866,9 +961,37 @@ def render_drivers(drivers):
             <strong>{h(driver['license_number'] or 'No license number')}</strong>
           </div>
           <div class="muted">{h(driver['phone'] or 'No phone')} | {h(driver['email'] or 'No email')}</div>
+          <details class="edit-box">
+            <summary>Edit driver</summary>
+            <form method="post" action="/drivers/update" class="form-grid compact-form">
+              <input type="hidden" name="driver_id" value="{driver['id']}">
+              <label><span>Name</span><input type="text" name="name" value="{h(driver['name'])}" required></label>
+              <label><span>License number</span><input type="text" name="license_number" value="{h(driver['license_number'] or '')}"></label>
+              <label><span>Phone</span><input type="text" name="phone" value="{h(driver['phone'] or '')}"></label>
+              <label><span>Email</span><input type="email" name="email" value="{h(driver['email'] or '')}"></label>
+              <label>
+                <span>Status</span>
+                <select name="status">
+                  {render_status_options(driver['status'], ['Active', 'Vacation', 'Inactive'])}
+                </select>
+              </label>
+              <button type="submit" class="primary-btn">Save changes</button>
+            </form>
+            <form method="post" action="/drivers/delete" class="delete-form" onsubmit="return confirm('Delete this driver and their assignments?');">
+              <input type="hidden" name="driver_id" value="{driver['id']}">
+              <button type="submit" class="danger-btn">Delete driver</button>
+            </form>
+          </details>
         </article>
         """
         for driver in drivers
+    )
+
+
+def render_status_options(current_value, options):
+    return "".join(
+        f'<option value="{h(option)}" {"selected" if option == current_value else ""}>{h(option)}</option>'
+        for option in options
     )
 
 
