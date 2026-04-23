@@ -94,6 +94,12 @@ Render will create:
 
 If you deploy with the Blueprint, your team will use the public HTTPS URL Render gives you.
 
+## Phone app install
+
+FleetCare can be installed on iPhone and Android as a browser-based phone app.
+
+See `INSTALL_PHONE_APP.md` for step-by-step instructions.
+
 ## Files
 
 - `server.py`: app entry point

@@ -825,8 +825,21 @@ def page(title, content):
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#1e7e61">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="FleetCare">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>{h(title)}</title>
+  <link rel="manifest" href="/static/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/static/icon-192.svg">
   <link rel="stylesheet" href="/static/styles.css">
+  <script>
+    if ("serviceWorker" in navigator) {{
+      window.addEventListener("load", () => {{
+        navigator.serviceWorker.register("/static/service-worker.js").catch(() => {{}});
+      }});
+    }}
+  </script>
 </head>
 <body>{content}</body>
 </html>"""
