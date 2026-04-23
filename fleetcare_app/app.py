@@ -825,7 +825,6 @@ def page(title, content):
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{h(title)}</title>
   <link rel="stylesheet" href="/static/styles.css">
-  <script src="/static/app.js" defer></script>
 </head>
 <body>{content}</body>
 </html>"""
@@ -843,10 +842,7 @@ def get_active_tab(route):
 
 def render_tab_link(tab_name, label, active_tab):
     active_class = " is-active" if tab_name == active_tab else ""
-    return (
-        f'<a class="quick-link{active_class}" href="/dashboard?tab={h(tab_name)}" '
-        f'data-tab-target="{h(tab_name)}">{h(label)}</a>'
-    )
+    return f'<a class="quick-link{active_class}" href="/dashboard?tab={h(tab_name)}">{h(label)}</a>'
 
 
 def tab_panel_classes(tab_name, active_tab, base_classes):
