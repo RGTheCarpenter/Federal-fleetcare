@@ -35,6 +35,7 @@ Production environment variables:
 - `HOST=0.0.0.0`
 - `PORT`
 - `SECRET_KEY`
+- `COMPANY_INVITE_CODE`
 - `DATABASE_URL`
 - `PGSSLMODE=require`
 
@@ -43,9 +44,10 @@ Basic deployment shape:
 1. Put this project on a server or hosting platform that can run `python server.py`.
 2. Set `HOST=0.0.0.0`
 3. Set a strong `SECRET_KEY`.
-4. Point `DATABASE_URL` at a managed PostgreSQL database.
-5. Let the platform provide `PORT`, or set one yourself.
-6. Keep the app running with:
+4. Set a private `COMPANY_INVITE_CODE` that only approved team members know.
+5. Point `DATABASE_URL` at a managed PostgreSQL database.
+6. Let the platform provide `PORT`, or set one yourself.
+7. Keep the app running with:
 
 ```text
 python server.py
@@ -87,6 +89,7 @@ Render will create:
 - one web service for the app
 - one managed PostgreSQL database
 - a generated `SECRET_KEY`
+- a private `COMPANY_INVITE_CODE` prompt
 - a connected `DATABASE_URL`
 
 If you deploy with the Blueprint, your team will use the public HTTPS URL Render gives you.
@@ -104,6 +107,7 @@ If you deploy with the Blueprint, your team will use the public HTTPS URL Render
 
 - The SQLite database file is created automatically as `fleetcare.db`.
 - Passwords are hashed locally before being stored.
+- New account registration requires `COMPANY_INVITE_CODE`.
 - Alerts in this version are in-app dashboard alerts.
 - PDF reports are generated locally and download from the browser.
 - `.fleetcare-secret` is created automatically to sign login cookies. Keep it private and persistent on the server.

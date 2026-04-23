@@ -17,6 +17,7 @@ STATIC_DIR = BASE_DIR / "static"
 HOST = os.environ.get("HOST", "127.0.0.1")
 PORT = int(os.environ.get("PORT", "8000"))
 SECRET_KEY = load_secret_key()
+COMPANY_INVITE_CODE = os.environ.get("COMPANY_INVITE_CODE", "").strip()
 
 
 def run():
@@ -119,9 +120,16 @@ class FleetCareHandler(BaseHTTPRequestHandler):
         company_name = form.get("company_name", "")
         email = form.get("email", "").lower()
         password = form.get("password", "")
+        invite_code = form.get("invite_code", "")
 
-        if not company_name or not email or not password:
+        if not company_name or not email or not password or not invite_code:
             return self.redirect("/register?error=Please+fill+out+every+field")
+
+        if not COMPANY_INVITE_CODE:
+            return self.redirect("/register?error=Registration+is+not+configured")
+
+        if invite_code != COMPANY_INVITE_CODE:
+            return self.redirect("/register?error=Invalid+company+invite+code")
 
         password_hash = hash_password(password)
         try:
@@ -354,6 +362,10 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 <label>
                   <span>Company name</span>
                   <input type="text" name="company_name" required>
+                </label>
+                <label>
+                  <span>Company invite code</span>
+                  <input type="password" name="invite_code" autocomplete="off" required>
                 </label>
             """
         )
