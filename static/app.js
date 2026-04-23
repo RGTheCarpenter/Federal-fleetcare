@@ -14,11 +14,14 @@ function activateTab(tabName) {
 }
 
 tabButtons.forEach((button) => {
-  button.addEventListener("click", () => {
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
     activateTab(button.dataset.tabTarget);
+    window.history.pushState({}, "", button.getAttribute("href"));
   });
 });
 
 if (tabButtons.length) {
-  activateTab(tabButtons[0].dataset.tabTarget);
+  const activeButton = document.querySelector("[data-tab-target].is-active") || tabButtons[0];
+  activateTab(activeButton.dataset.tabTarget);
 }

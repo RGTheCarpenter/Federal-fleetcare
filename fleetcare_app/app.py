@@ -204,7 +204,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 ),
             )
 
-        self.redirect("/dashboard#vehicles")
+        self.redirect("/dashboard?tab=vehicles#vehicles")
 
     def handle_vehicle_update(self, user, form):
         vehicle_id = int(form.get("vehicle_id") or 0)
@@ -227,7 +227,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 ),
             )
 
-        self.redirect("/dashboard#vehicles")
+        self.redirect("/dashboard?tab=vehicles#vehicles")
 
     def handle_vehicle_delete(self, user, form):
         vehicle_id = int(form.get("vehicle_id") or 0)
@@ -237,7 +237,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 (vehicle_id, user["id"]),
             )
 
-        self.redirect("/dashboard#vehicles")
+        self.redirect("/dashboard?tab=vehicles#vehicles")
 
     def handle_driver_add(self, user, form):
         with get_connection() as connection:
@@ -256,7 +256,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 ),
             )
 
-        self.redirect("/dashboard#drivers")
+        self.redirect("/dashboard?tab=drivers#drivers")
 
     def handle_driver_update(self, user, form):
         driver_id = int(form.get("driver_id") or 0)
@@ -278,7 +278,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 ),
             )
 
-        self.redirect("/dashboard#drivers")
+        self.redirect("/dashboard?tab=drivers#drivers")
 
     def handle_driver_delete(self, user, form):
         driver_id = int(form.get("driver_id") or 0)
@@ -288,7 +288,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 (driver_id, user["id"]),
             )
 
-        self.redirect("/dashboard#drivers")
+        self.redirect("/dashboard?tab=drivers#drivers")
 
     def handle_assignment_add(self, user, form):
         vehicle_id = int(form.get("vehicle_id") or 0)
@@ -318,7 +318,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 ),
             )
 
-        self.redirect("/dashboard#assignments")
+        self.redirect("/dashboard?tab=assignments#assignments")
 
     def handle_maintenance_add(self, user, form):
         vehicle_id = int(form.get("vehicle_id") or 0)
@@ -355,7 +355,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 (odometer, odometer, vehicle_id, user["id"]),
             )
 
-        self.redirect("/dashboard#maintenance")
+        self.redirect("/dashboard?tab=maintenance#maintenance")
 
     def handle_fuel_add(self, user, form):
         vehicle_id = int(form.get("vehicle_id") or 0)
@@ -397,7 +397,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 (odometer, odometer, vehicle_id, user["id"]),
             )
 
-        self.redirect("/dashboard#fuel")
+        self.redirect("/dashboard?tab=fuel#fuel")
 
     def handle_reminder_add(self, user, form):
         with get_connection() as connection:
@@ -416,7 +416,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 ),
             )
 
-        self.redirect("/dashboard#reminders")
+        self.redirect("/dashboard?tab=alerts#reminders")
 
     def render_auth_page(self, mode):
         route = urlparse(self.path)
@@ -472,6 +472,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
         user = self.require_user()
         if not user:
             return
+        active_tab = get_active_tab(route)
 
         with get_connection() as connection:
             vehicles = connection.execute(
@@ -567,12 +568,12 @@ class FleetCareHandler(BaseHTTPRequestHandler):
           </section>
 
           <nav class="quick-links" aria-label="Dashboard sections">
-            <button class="quick-link is-active" type="button" data-tab-target="vehicles">Vehicles</button>
-            <button class="quick-link" type="button" data-tab-target="drivers">Drivers</button>
-            <button class="quick-link" type="button" data-tab-target="assignments">Assignments</button>
-            <button class="quick-link" type="button" data-tab-target="maintenance">Maintenance</button>
-            <button class="quick-link" type="button" data-tab-target="fuel">Fuel</button>
-            <button class="quick-link" type="button" data-tab-target="alerts">Alerts</button>
+            {render_tab_link("vehicles", "Vehicles", active_tab)}
+            {render_tab_link("drivers", "Drivers", active_tab)}
+            {render_tab_link("assignments", "Assignments", active_tab)}
+            {render_tab_link("maintenance", "Maintenance", active_tab)}
+            {render_tab_link("fuel", "Fuel", active_tab)}
+            {render_tab_link("alerts", "Alerts", active_tab)}
           </nav>
 
           <section class="stats-grid">
@@ -584,7 +585,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
             {render_stat("Avg fuel price", money(stats["avg_fuel_price"]))}
           </section>
 
-          <section class="panel span-two tab-panel" data-tab-section="alerts">
+          <section class="{tab_panel_classes('alerts', active_tab, 'panel span-two')}" data-tab-section="alerts" {"hidden" if active_tab != "alerts" else ""}>
             <div class="panel-header">
               <div>
                 <p class="section-kicker">Alerts</p>
@@ -597,7 +598,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
           </section>
 
           <main class="layout">
-            <section class="panel tab-panel" id="vehicles" data-tab-section="vehicles">
+            <section class="{tab_panel_classes('vehicles', active_tab, 'panel')}" id="vehicles" data-tab-section="vehicles" {"hidden" if active_tab != "vehicles" else ""}>
               <div class="panel-header"><div><p class="section-kicker">Fleet</p><h2>Add vehicle</h2></div></div>
               <form method="post" action="/vehicles/add" class="form-grid">
                 <label><span>Name</span><input type="text" name="name" required></label>
@@ -617,7 +618,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
               </form>
             </section>
 
-            <section class="panel tab-panel" id="drivers" data-tab-section="drivers">
+            <section class="{tab_panel_classes('drivers', active_tab, 'panel')}" id="drivers" data-tab-section="drivers" {"hidden" if active_tab != "drivers" else ""}>
               <div class="panel-header"><div><p class="section-kicker">Drivers</p><h2>Add driver</h2></div></div>
               <form method="post" action="/drivers/add" class="form-grid">
                 <label><span>Name</span><input type="text" name="name" required></label>
@@ -636,47 +637,47 @@ class FleetCareHandler(BaseHTTPRequestHandler):
               </form>
             </section>
 
-            <section class="panel tab-panel" id="assignments" data-tab-section="assignments">
+            <section class="{tab_panel_classes('assignments', active_tab, 'panel')}" id="assignments" data-tab-section="assignments" {"hidden" if active_tab != "assignments" else ""}>
               <div class="panel-header"><div><p class="section-kicker">Assignments</p><h2>Assign vehicle</h2></div></div>
               {render_assignment_form(vehicles, drivers)}
             </section>
 
-            <section class="panel tab-panel" id="maintenance" data-tab-section="maintenance">
+            <section class="{tab_panel_classes('maintenance', active_tab, 'panel')}" id="maintenance" data-tab-section="maintenance" {"hidden" if active_tab != "maintenance" else ""}>
               <div class="panel-header"><div><p class="section-kicker">Maintenance</p><h2>Log service</h2></div></div>
               {render_maintenance_form(vehicles)}
             </section>
 
-            <section class="panel tab-panel" id="fuel" data-tab-section="fuel">
+            <section class="{tab_panel_classes('fuel', active_tab, 'panel')}" id="fuel" data-tab-section="fuel" {"hidden" if active_tab != "fuel" else ""}>
               <div class="panel-header"><div><p class="section-kicker">Fuel</p><h2>Log fuel fill</h2></div></div>
               {render_fuel_form(vehicles)}
             </section>
 
-            <section class="panel tab-panel" id="reminders" data-tab-section="alerts">
+            <section class="{tab_panel_classes('alerts', active_tab, 'panel')}" id="reminders" data-tab-section="alerts" {"hidden" if active_tab != "alerts" else ""}>
               <div class="panel-header"><div><p class="section-kicker">Reminders</p><h2>Create alert reminder</h2></div></div>
               {render_reminder_form(vehicles)}
             </section>
 
-            <section class="panel span-two tab-panel" data-tab-section="vehicles">
+            <section class="{tab_panel_classes('vehicles', active_tab, 'panel span-two')}" data-tab-section="vehicles" {"hidden" if active_tab != "vehicles" else ""}>
               <div class="panel-header"><div><p class="section-kicker">Current state</p><h2>Vehicles</h2></div></div>
               <div class="stack-list">{render_vehicles(vehicles)}</div>
             </section>
 
-            <section class="panel span-two tab-panel" data-tab-section="drivers">
+            <section class="{tab_panel_classes('drivers', active_tab, 'panel span-two')}" data-tab-section="drivers" {"hidden" if active_tab != "drivers" else ""}>
               <div class="panel-header"><div><p class="section-kicker">Current state</p><h2>Drivers</h2></div></div>
               <div class="stack-list">{render_drivers(drivers)}</div>
             </section>
 
-            <section class="panel span-two tab-panel" data-tab-section="assignments">
+            <section class="{tab_panel_classes('assignments', active_tab, 'panel span-two')}" data-tab-section="assignments" {"hidden" if active_tab != "assignments" else ""}>
               <div class="panel-header"><div><p class="section-kicker">Assignments</p><h2>Driver assignments</h2></div></div>
               <div class="stack-list">{render_assignments(assignments)}</div>
             </section>
 
-            <section class="panel span-two tab-panel" data-tab-section="maintenance">
+            <section class="{tab_panel_classes('maintenance', active_tab, 'panel span-two')}" data-tab-section="maintenance" {"hidden" if active_tab != "maintenance" else ""}>
               <div class="panel-header"><div><p class="section-kicker">History</p><h2>Maintenance history</h2></div></div>
               <div class="stack-list">{render_maintenance_logs(maintenance)}</div>
             </section>
 
-            <section class="panel span-two tab-panel" data-tab-section="fuel">
+            <section class="{tab_panel_classes('fuel', active_tab, 'panel span-two')}" data-tab-section="fuel" {"hidden" if active_tab != "fuel" else ""}>
               <div class="panel-header"><div><p class="section-kicker">Consumption</p><h2>Fuel history</h2></div></div>
               <div class="stack-list">{render_fuel_logs(fuel_logs)}</div>
             </section>
@@ -832,6 +833,25 @@ def page(title, content):
 
 def h(value):
     return html.escape(str(value or ""))
+
+
+def get_active_tab(route):
+    valid_tabs = {"vehicles", "drivers", "assignments", "maintenance", "fuel", "alerts"}
+    tab = parse_qs(route.query).get("tab", ["vehicles"])[0]
+    return tab if tab in valid_tabs else "vehicles"
+
+
+def render_tab_link(tab_name, label, active_tab):
+    active_class = " is-active" if tab_name == active_tab else ""
+    return (
+        f'<a class="quick-link{active_class}" href="/dashboard?tab={h(tab_name)}" '
+        f'data-tab-target="{h(tab_name)}">{h(label)}</a>'
+    )
+
+
+def tab_panel_classes(tab_name, active_tab, base_classes):
+    active_class = " is-active" if tab_name == active_tab else ""
+    return f"{base_classes} tab-panel{active_class}"
 
 
 def render_stat(label, value):
