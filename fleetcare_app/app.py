@@ -475,12 +475,12 @@ class FleetCareHandler(BaseHTTPRequestHandler):
           </header>
 
           <nav class="quick-links" aria-label="Dashboard sections">
-            <a class="quick-link" href="#vehicles">Vehicles</a>
-            <a class="quick-link" href="#drivers">Drivers</a>
-            <a class="quick-link" href="#assignments">Assignments</a>
-            <a class="quick-link" href="#maintenance">Maintenance</a>
-            <a class="quick-link" href="#fuel">Fuel</a>
-            <a class="quick-link" href="#reminders">Alerts</a>
+            <button class="quick-link is-active" type="button" data-tab-target="vehicles">Vehicles</button>
+            <button class="quick-link" type="button" data-tab-target="drivers">Drivers</button>
+            <button class="quick-link" type="button" data-tab-target="assignments">Assignments</button>
+            <button class="quick-link" type="button" data-tab-target="maintenance">Maintenance</button>
+            <button class="quick-link" type="button" data-tab-target="fuel">Fuel</button>
+            <button class="quick-link" type="button" data-tab-target="alerts">Alerts</button>
           </nav>
 
           <section class="stats-grid">
@@ -492,7 +492,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
             {render_stat("Avg fuel price", money(stats["avg_fuel_price"]))}
           </section>
 
-          <section class="panel span-two">
+          <section class="panel span-two tab-panel" data-tab-section="alerts">
             <div class="panel-header">
               <div>
                 <p class="section-kicker">Alerts</p>
@@ -505,7 +505,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
           </section>
 
           <main class="layout">
-            <section class="panel" id="vehicles">
+            <section class="panel tab-panel" id="vehicles" data-tab-section="vehicles">
               <div class="panel-header"><div><p class="section-kicker">Fleet</p><h2>Add vehicle</h2></div></div>
               <form method="post" action="/vehicles/add" class="form-grid">
                 <label><span>Name</span><input type="text" name="name" required></label>
@@ -525,7 +525,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
               </form>
             </section>
 
-            <section class="panel" id="drivers">
+            <section class="panel tab-panel" id="drivers" data-tab-section="drivers">
               <div class="panel-header"><div><p class="section-kicker">Drivers</p><h2>Add driver</h2></div></div>
               <form method="post" action="/drivers/add" class="form-grid">
                 <label><span>Name</span><input type="text" name="name" required></label>
@@ -544,45 +544,47 @@ class FleetCareHandler(BaseHTTPRequestHandler):
               </form>
             </section>
 
-            <section class="panel" id="assignments">
+            <section class="panel tab-panel" id="assignments" data-tab-section="assignments">
               <div class="panel-header"><div><p class="section-kicker">Assignments</p><h2>Assign vehicle</h2></div></div>
               {render_assignment_form(vehicles, drivers)}
             </section>
 
-            <section class="panel" id="maintenance">
+            <section class="panel tab-panel" id="maintenance" data-tab-section="maintenance">
               <div class="panel-header"><div><p class="section-kicker">Maintenance</p><h2>Log service</h2></div></div>
               {render_maintenance_form(vehicles)}
             </section>
 
-            <section class="panel" id="fuel">
+            <section class="panel tab-panel" id="fuel" data-tab-section="fuel">
               <div class="panel-header"><div><p class="section-kicker">Fuel</p><h2>Log fuel fill</h2></div></div>
               {render_fuel_form(vehicles)}
             </section>
 
-            <section class="panel" id="reminders">
+            <section class="panel tab-panel" id="reminders" data-tab-section="alerts">
               <div class="panel-header"><div><p class="section-kicker">Reminders</p><h2>Create alert reminder</h2></div></div>
               {render_reminder_form(vehicles)}
             </section>
 
-            <section class="panel span-two">
-              <div class="panel-header"><div><p class="section-kicker">Current state</p><h2>Vehicles and drivers</h2></div></div>
-              <div class="split-grid">
-                <div class="stack-list">{render_vehicles(vehicles)}</div>
-                <div class="stack-list">{render_drivers(drivers)}</div>
-              </div>
+            <section class="panel span-two tab-panel" data-tab-section="vehicles">
+              <div class="panel-header"><div><p class="section-kicker">Current state</p><h2>Vehicles</h2></div></div>
+              <div class="stack-list">{render_vehicles(vehicles)}</div>
             </section>
 
-            <section class="panel span-two">
+            <section class="panel span-two tab-panel" data-tab-section="drivers">
+              <div class="panel-header"><div><p class="section-kicker">Current state</p><h2>Drivers</h2></div></div>
+              <div class="stack-list">{render_drivers(drivers)}</div>
+            </section>
+
+            <section class="panel span-two tab-panel" data-tab-section="assignments">
               <div class="panel-header"><div><p class="section-kicker">Assignments</p><h2>Driver assignments</h2></div></div>
               <div class="stack-list">{render_assignments(assignments)}</div>
             </section>
 
-            <section class="panel span-two">
+            <section class="panel span-two tab-panel" data-tab-section="maintenance">
               <div class="panel-header"><div><p class="section-kicker">History</p><h2>Maintenance history</h2></div></div>
               <div class="stack-list">{render_maintenance_logs(maintenance)}</div>
             </section>
 
-            <section class="panel span-two">
+            <section class="panel span-two tab-panel" data-tab-section="fuel">
               <div class="panel-header"><div><p class="section-kicker">Consumption</p><h2>Fuel history</h2></div></div>
               <div class="stack-list">{render_fuel_logs(fuel_logs)}</div>
             </section>
@@ -717,6 +719,7 @@ def page(title, content):
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{h(title)}</title>
   <link rel="stylesheet" href="/static/styles.css">
+  <script src="/static/app.js" defer></script>
 </head>
 <body>{content}</body>
 </html>"""
