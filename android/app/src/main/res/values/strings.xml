@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">FleetCare Mobile</string>
+    <string name="title_activity_main">FleetCare Mobile</string>
+    <string name="package_name">com.rgthecarpenter.federalfleetcare</string>
+    <string name="custom_url_scheme">com.rgthecarpenter.federalfleetcare</string>
+</resources>

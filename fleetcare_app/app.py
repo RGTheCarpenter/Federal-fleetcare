@@ -1,4 +1,5 @@
 import html
+import json
 import mimetypes
 import os
 from datetime import date, datetime
@@ -18,6 +19,7 @@ HOST = os.environ.get("HOST", "127.0.0.1")
 PORT = int(os.environ.get("PORT", "8000"))
 SECRET_KEY = load_secret_key()
 COMPANY_INVITE_CODE = os.environ.get("COMPANY_INVITE_CODE", "").strip()
+APP_PUBLIC_URL = os.environ.get("APP_PUBLIC_URL", "https://fleetcare-web.onrender.com").strip()
 
 
 def run():
@@ -190,8 +192,8 @@ class FleetCareHandler(BaseHTTPRequestHandler):
         with get_connection() as connection:
             connection.execute(
                 """
-                INSERT INTO vehicles (user_id, name, plate, model, year, odometer, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO vehicles (user_id, name, plate, model, year, odometer, status, photo_name, photo_data)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     user["id"],
@@ -201,6 +203,8 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                     int(form.get("year") or 0) or None,
                     int(form.get("odometer") or 0),
                     form.get("status", "Active"),
+                    clean_upload_name(form.get("photo_name", "")),
+                    clean_upload_data(form.get("photo_data", "")),
                 ),
             )
 
@@ -212,7 +216,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
             connection.execute(
                 """
                 UPDATE vehicles
-                SET name = ?, plate = ?, model = ?, year = ?, odometer = ?, status = ?
+                SET name = ?, plate = ?, model = ?, year = ?, odometer = ?, status = ?, photo_name = ?, photo_data = ?
                 WHERE id = ? AND user_id = ?
                 """,
                 (
@@ -222,6 +226,8 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                     int(form.get("year") or 0) or None,
                     int(form.get("odometer") or 0),
                     form.get("status", "Active"),
+                    clean_upload_name(form.get("photo_name", "")),
+                    clean_upload_data(form.get("photo_data", "")),
                     vehicle_id,
                     user["id"],
                 ),
@@ -328,8 +334,8 @@ class FleetCareHandler(BaseHTTPRequestHandler):
             connection.execute(
                 """
                 INSERT INTO maintenance_logs
-                (user_id, vehicle_id, service_type, service_date, odometer, cost, notes, next_due_date, next_due_odometer)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (user_id, vehicle_id, service_type, service_date, odometer, cost, notes, next_due_date, next_due_odometer, attachment_name, attachment_data)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     user["id"],
@@ -341,6 +347,8 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                     form.get("notes", ""),
                     form.get("next_due_date") or None,
                     int(form.get("next_due_odometer") or 0) or None,
+                    clean_upload_name(form.get("attachment_name", "")),
+                    clean_upload_data(form.get("attachment_data", "")),
                 ),
             )
             connection.execute(
@@ -529,15 +537,27 @@ class FleetCareHandler(BaseHTTPRequestHandler):
 
         alerts = collect_alerts(reminders, assignments)
         stats = build_stats(vehicles, maintenance, fuel_logs, reminders)
+        mobile_reminders = json.dumps(build_mobile_reminders(reminders), separators=(",", ":"))
 
         content = f"""
         <div class="page-shell">
+          <div class="offline-banner" data-offline-banner hidden>
+            Connection lost. FleetCare will retry automatically when your phone is back online.
+          </div>
           <header class="hero">
             <div>
               <p class="kicker">Fleet operations</p>
               <h1>{h(user["company_name"])}</h1>
             </div>
             <div class="hero-actions">
+              <button
+                type="button"
+                class="ghost-btn"
+                data-share-app
+                data-share-title="FleetCare"
+                data-share-text="Open FleetCare to manage vehicles, service, fuel, and reminders."
+                data-share-url="{h(APP_PUBLIC_URL)}"
+              >Share app</button>
               <form method="post" action="/logout">
                 <button type="submit" class="ghost-btn">Sign out</button>
               </form>
@@ -616,6 +636,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                     <option>Inactive</option>
                   </select>
                 </label>
+                {render_upload_field("Vehicle photo", "vehicle-photo-new", "photo_name", "photo_data", "image/*", capture=True)}
                 <button type="submit" class="primary-btn">Save vehicle</button>
               </form>
             </section>
@@ -685,6 +706,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
             </section>
           </main>
         </div>
+        <script>window.FLEETCARE_REMINDERS = {mobile_reminders};</script>
         """
         return self.send_html(page("FleetCare Dashboard", content))
 
@@ -833,6 +855,7 @@ def page(title, content):
   <link rel="manifest" href="/static/manifest.webmanifest">
   <link rel="apple-touch-icon" href="/static/icon-192.svg">
   <link rel="stylesheet" href="/static/styles.css">
+  <script src="/static/mobile.js" defer></script>
   <script>
     if ("serviceWorker" in navigator) {{
       window.addEventListener("load", () => {{
@@ -908,6 +931,7 @@ def render_maintenance_form(vehicles):
       <label><span>Cost</span><input type="number" name="cost" min="0" step="0.01" required></label>
       <label><span>Next due date</span><input type="date" name="next_due_date"></label>
       <label><span>Next due odometer</span><input type="number" name="next_due_odometer" min="0"></label>
+      {render_upload_field("Invoice or photo", "maintenance-attachment-new", "attachment_name", "attachment_data", ".pdf,image/*")}
       <label class="full-span"><span>Notes</span><textarea name="notes" rows="3"></textarea></label>
       <button type="submit" class="primary-btn">Save service</button>
     </form>
@@ -973,6 +997,7 @@ def render_vehicles(vehicles):
     return "".join(
         f"""
         <article class="list-item">
+          {render_media_preview(row_value(vehicle, 'photo_data'), row_value(vehicle, 'photo_name'), 'Vehicle photo')}
           <div class="item-head">
             <div class="item-title-row">
               <div class="item-title">{h(vehicle['name'])}</div>
@@ -997,6 +1022,7 @@ def render_vehicles(vehicles):
                   {render_status_options(vehicle['status'], ['Active', 'In service', 'Inactive'])}
                 </select>
               </label>
+              {render_upload_field("Vehicle photo", f"vehicle-photo-{vehicle['id']}", "photo_name", "photo_data", "image/*", capture=True, existing_name=row_value(vehicle, 'photo_name'), existing_data=row_value(vehicle, 'photo_data'))}
               <button type="submit" class="primary-btn">Save changes</button>
             </form>
             <form method="post" action="/vehicles/delete" class="delete-form" onsubmit="return confirm('Delete this vehicle and its related records?');">
@@ -1085,6 +1111,7 @@ def render_maintenance_logs(maintenance):
     return "".join(
         f"""
         <article class="list-item">
+          {render_media_preview(row_value(item, 'attachment_data'), row_value(item, 'attachment_name'), 'Attachment')}
           <div class="item-head">
             <div class="item-title-row">
               <div class="item-title">{h(item['service_type'])}</div>
@@ -1262,3 +1289,76 @@ def slugify(value):
     while "--" in text:
         text = text.replace("--", "-")
     return text.strip("-") or "fleetcare"
+
+
+def row_value(row, key):
+    if row is None:
+        return None
+    if hasattr(row, "keys") and key in row.keys():
+        return row[key]
+    try:
+        return row[key]
+    except Exception:
+        return None
+
+
+def clean_upload_name(value):
+    return (value or "").strip()[:160] or None
+
+
+def clean_upload_data(value):
+    data = (value or "").strip()
+    if not data.startswith("data:"):
+        return None
+    return data[:4_000_000]
+
+
+def render_upload_field(label, input_id, name_field, data_field, accept, capture=False, existing_name="", existing_data=""):
+    capture_attr = ' capture="environment"' if capture else ""
+    preview = render_media_preview(existing_data, existing_name, label, preview_class="upload-preview")
+    current_name = h(existing_name or "")
+    current_data = h(existing_data or "")
+    return f"""
+    <div class="upload-field full-span">
+      <span>{h(label)}</span>
+      <input
+        id="{h(input_id)}"
+        type="file"
+        accept="{h(accept)}"{capture_attr}
+        data-encode-target="{h(data_field)}"
+        data-name-target="{h(name_field)}"
+        data-preview-target="{h(input_id)}-preview"
+      >
+      <input type="hidden" name="{h(name_field)}" value="{current_name}">
+      <input type="hidden" name="{h(data_field)}" value="{current_data}">
+      <div id="{h(input_id)}-preview">{preview}</div>
+      <small class="muted">On phones, you can pick a saved file or take a new photo.</small>
+    </div>
+    """
+
+
+def render_media_preview(data_url, file_name, alt_text, preview_class="attachment-preview"):
+    if not data_url:
+        return ""
+    safe_url = h(data_url)
+    safe_name = h(file_name or alt_text)
+    if data_url.startswith("data:image/"):
+        return f'<div class="{preview_class}"><img src="{safe_url}" alt="{h(alt_text)}"><span>{safe_name}</span></div>'
+    return f'<div class="{preview_class}"><a href="{safe_url}" download="{safe_name}" class="ghost-btn">Open {safe_name}</a></div>'
+
+
+def build_mobile_reminders(reminders):
+    items = []
+    for reminder in reminders:
+        if not reminder["due_date"]:
+            continue
+        items.append(
+            {
+                "id": int(reminder["id"]),
+                "title": reminder["title"],
+                "vehicle": reminder["vehicle_name"],
+                "dueDate": reminder["due_date"],
+                "notes": reminder["notes"] or "",
+            }
+        )
+    return items

@@ -1,12 +1,17 @@
 {
   "appId": "com.rgthecarpenter.federalfleetcare",
-  "appName": "FleetCare",
+  "appName": "FleetCare Mobile",
   "webDir": "static-capacitor-shell",
   "server": {
     "url": "https://fleetcare-web.onrender.com",
     "cleartext": false
   },
   "plugins": {
+    "LocalNotifications": {
+      "smallIcon": "ic_launcher_foreground",
+      "iconColor": "#1e7e61"
+    },
+    "Share": {},
     "SplashScreen": {
       "launchShowDuration": 1200,
       "backgroundColor": "#f4eadb",

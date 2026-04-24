@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FleetCare Mobile</title>
+  <style>
+    :root {
+      --bg: #f4eadb;
+      --paper: rgba(255, 250, 240, 0.96);
+      --ink: #18211c;
+      --muted: #647066;
+      --accent: #1e7e61;
+      --accent-strong: #11513f;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      color: var(--ink);
+      font-family: "Segoe UI", Tahoma, sans-serif;
+      background:
+        radial-gradient(circle at top right, rgba(30, 126, 97, 0.17), transparent 24%),
+        radial-gradient(circle at bottom left, rgba(207, 123, 48, 0.12), transparent 20%),
+        linear-gradient(180deg, #f4eadb 0%, #efe3cf 100%);
+    }
+
+    .card {
+      width: min(460px, 100%);
+      padding: 28px;
+      border-radius: 28px;
+      background: var(--paper);
+      border: 1px solid rgba(255, 255, 255, 0.68);
+      box-shadow: 0 26px 60px rgba(58, 51, 37, 0.16);
+    }
+
+    .kicker {
+      margin: 0 0 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      font-size: 0.74rem;
+      color: #1f2a24;
+    }
+
+    h1 {
+      margin: 0 0 12px;
+      font-size: clamp(2rem, 7vw, 2.8rem);
+      line-height: 0.95;
+      letter-spacing: -0.04em;
+    }
+
+    p {
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .actions {
+      display: grid;
+      gap: 12px;
+      margin-top: 18px;
+    }
+
+    button,
+    a {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 48px;
+      border-radius: 999px;
+      padding: 12px 18px;
+      font: inherit;
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    button {
+      border: 0;
+      background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+      color: white;
+      font-weight: 700;
+    }
+
+    a {
+      border: 1px solid rgba(24, 33, 28, 0.1);
+      background: rgba(255, 255, 255, 0.64);
+      color: var(--ink);
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <p class="kicker">FleetCare Mobile</p>
+    <h1>You're offline</h1>
+    <p>FleetCare could not reach the live service just now. Check your connection and retry, or open the main site when you are back online.</p>
+    <div class="actions">
+      <button type="button" onclick="window.location.reload()">Try again</button>
+      <a href="https://fleetcare-web.onrender.com">Open FleetCare in browser</a>
+    </div>
+  </main>
+</body>
+</html>

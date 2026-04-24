@@ -88,6 +88,8 @@ def init_db():
     with get_connection() as connection:
         for statement in schema_statements(connection.engine):
             connection.execute(statement)
+        for statement in migration_statements():
+            connection.execute(statement)
 
 
 def schema_statements(engine):
@@ -199,6 +201,15 @@ def schema_statements(engine):
             FOREIGN KEY(vehicle_id) REFERENCES vehicles(id) ON DELETE CASCADE
         )
         """,
+    ]
+
+
+def migration_statements():
+    return [
+        "ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS photo_name TEXT",
+        "ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS photo_data TEXT",
+        "ALTER TABLE maintenance_logs ADD COLUMN IF NOT EXISTS attachment_name TEXT",
+        "ALTER TABLE maintenance_logs ADD COLUMN IF NOT EXISTS attachment_data TEXT",
     ]
 
 
