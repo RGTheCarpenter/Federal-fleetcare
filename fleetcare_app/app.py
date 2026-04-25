@@ -20,12 +20,15 @@ PORT = int(os.environ.get("PORT", "8000"))
 SECRET_KEY = load_secret_key()
 COMPANY_INVITE_CODE = os.environ.get("COMPANY_INVITE_CODE", "").strip()
 APP_PUBLIC_URL = os.environ.get("APP_PUBLIC_URL", "https://fleetcare-web.onrender.com").strip()
+APP_BRAND = "Roadsmith Fleet"
+APP_SHORT_NAME = "Roadsmith"
+APP_TAGLINE = "Field command for working fleets"
 
 
 def run():
     init_db()
     server = ThreadingHTTPServer((HOST, PORT), FleetCareHandler)
-    print(f"FleetCare running on http://{HOST}:{PORT}")
+    print(f"{APP_BRAND} running on http://{HOST}:{PORT}")
     server.serve_forever()
 
 
@@ -553,9 +556,9 @@ class FleetCareHandler(BaseHTTPRequestHandler):
         content = f"""
         <section class="auth-shell">
           <div class="auth-card">
-            <p class="kicker">FleetCare</p>
+            {render_brand_lockup(compact=True)}
             <h1>{title}</h1>
-            <p class="muted">Manage fleet maintenance, fuel, assignments, reports, and alerts in one place.</p>
+            <p class="muted">Manage fleet maintenance, fuel, assignments, reports, GPS, and alerts in one place.</p>
             {f'<div class="flash error">{h(message)}</div>' if message else ''}
             <form method="post" action="{action}" class="form-grid single-column">
               {extra}
@@ -573,13 +576,14 @@ class FleetCareHandler(BaseHTTPRequestHandler):
           </div>
         </section>
         """
-        return self.send_html(page("FleetCare", content))
+        return self.send_html(page(APP_BRAND, content))
 
     def render_dashboard(self, route):
         user = self.require_user()
         if not user:
             return
         active_tab = get_active_tab(route)
+        active_vehicle_view = get_vehicle_view(route)
 
         try:
             with get_connection() as connection:
@@ -735,22 +739,23 @@ class FleetCareHandler(BaseHTTPRequestHandler):
             content = f"""
         <div class="page-shell">
           <div class="offline-banner" data-offline-banner hidden>
-            Connection lost. FleetCare will retry automatically when your phone is back online.
+            Connection lost. Roadsmith Fleet will retry automatically when your phone is back online.
           </div>
           <header class="hero">
-            <div>
+            <div class="hero-copy">
               <p class="kicker">Fleet operations</p>
-              <h1>{h(user["company_name"])}</h1>
+              {render_brand_lockup()}
+              <p class="hero-subtitle">Workspace for {h(user["company_name"])}</p>
             </div>
             <div class="hero-actions">
               <button
                 type="button"
                 class="ghost-btn"
                 data-share-app
-                data-share-title="FleetCare"
-                data-share-text="Open FleetCare to manage vehicles, service, fuel, and reminders."
+                data-share-title="{h(APP_BRAND)}"
+                data-share-text="Open {h(APP_BRAND)} to manage vehicles, service, fuel, and reminders."
                 data-share-url="{h(APP_PUBLIC_URL)}"
-              >Share app</button>
+              >Share workspace</button>
               <form method="post" action="/logout">
                 <button type="submit" class="ghost-btn">Sign out</button>
               </form>
@@ -813,12 +818,28 @@ class FleetCareHandler(BaseHTTPRequestHandler):
           </section>
 
           <main class="layout">
-            <section class="{tab_panel_classes('vehicles', active_tab, 'panel')}" id="tracking-status" data-tab-section="vehicles" {"hidden" if active_tab != "vehicles" else ""}>
+            <section class="{tab_panel_classes('vehicles', active_tab, 'panel span-two')}" id="vehicle-workspace" data-tab-section="vehicles" {"hidden" if active_tab != "vehicles" else ""}>
+              <div class="panel-header">
+                <div>
+                  <p class="section-kicker">Vehicle workspace</p>
+                  <h2>Fleet command</h2>
+                </div>
+              </div>
+              <nav class="sub-links" aria-label="Vehicle workspace views">
+                {render_subtab_link("vehicles", "overview", "Overview", active_vehicle_view)}
+                {render_subtab_link("vehicles", "add", "Add vehicle", active_vehicle_view)}
+                {render_subtab_link("vehicles", "capture", "GPS capture", active_vehicle_view)}
+                {render_subtab_link("vehicles", "trips", "Trips", active_vehicle_view)}
+                {render_subtab_link("vehicles", "history", "History", active_vehicle_view)}
+              </nav>
+            </section>
+
+            <section class="{tab_panel_classes('vehicles', active_tab, 'panel')}" id="tracking-status" data-tab-section="vehicles" {"hidden" if active_tab != "vehicles" or active_vehicle_view != "overview" else ""}>
               <div class="panel-header"><div><p class="section-kicker">Tracking</p><h2>Tracking status</h2></div></div>
               {render_tracking_status(active_trip, gps_logs)}
             </section>
 
-            <section class="{tab_panel_classes('vehicles', active_tab, 'panel')}" id="vehicles" data-tab-section="vehicles" {"hidden" if active_tab != "vehicles" else ""}>
+            <section class="{tab_panel_classes('vehicles', active_tab, 'panel')}" id="vehicles" data-tab-section="vehicles" {"hidden" if active_tab != "vehicles" or active_vehicle_view != "add" else ""}>
               <div class="panel-header"><div><p class="section-kicker">Fleet</p><h2>Add vehicle</h2></div></div>
               <form method="post" action="/vehicles/add" class="form-grid">
                 <label><span>Name</span><input type="text" name="name" required></label>
@@ -839,12 +860,12 @@ class FleetCareHandler(BaseHTTPRequestHandler):
               </form>
             </section>
 
-            <section class="{tab_panel_classes('vehicles', active_tab, 'panel')}" id="gps" data-tab-section="vehicles" {"hidden" if active_tab != "vehicles" else ""}>
+            <section class="{tab_panel_classes('vehicles', active_tab, 'panel')}" id="gps" data-tab-section="vehicles" {"hidden" if active_tab != "vehicles" or active_vehicle_view != "capture" else ""}>
               <div class="panel-header"><div><p class="section-kicker">GPS</p><h2>Capture a location</h2></div></div>
               {render_gps_form(vehicles, active_trip)}
             </section>
 
-            <section class="{tab_panel_classes('vehicles', active_tab, 'panel')}" id="trip-control" data-tab-section="vehicles" {"hidden" if active_tab != "vehicles" else ""}>
+            <section class="{tab_panel_classes('vehicles', active_tab, 'panel')}" id="trip-control" data-tab-section="vehicles" {"hidden" if active_tab != "vehicles" or active_vehicle_view != "trips" else ""}>
               <div class="panel-header"><div><p class="section-kicker">Trips</p><h2>Trip tracking</h2></div></div>
               {render_trip_controls(vehicles, active_trip)}
             </section>
@@ -888,17 +909,17 @@ class FleetCareHandler(BaseHTTPRequestHandler):
               {render_reminder_form(vehicles)}
             </section>
 
-            <section class="{tab_panel_classes('vehicles', active_tab, 'panel span-two')}" data-tab-section="vehicles" {"hidden" if active_tab != "vehicles" else ""}>
+            <section class="{tab_panel_classes('vehicles', active_tab, 'panel span-two')}" data-tab-section="vehicles" {"hidden" if active_tab != "vehicles" or active_vehicle_view != "overview" else ""}>
               <div class="panel-header"><div><p class="section-kicker">Current state</p><h2>Vehicles</h2></div></div>
               <div class="stack-list">{render_vehicles(vehicles)}</div>
             </section>
 
-            <section class="{tab_panel_classes('vehicles', active_tab, 'panel span-two')}" data-tab-section="vehicles" {"hidden" if active_tab != "vehicles" else ""}>
+            <section class="{tab_panel_classes('vehicles', active_tab, 'panel span-two')}" data-tab-section="vehicles" {"hidden" if active_tab != "vehicles" or active_vehicle_view != "capture" else ""}>
               <div class="panel-header"><div><p class="section-kicker">GPS</p><h2>Recent location history</h2></div></div>
               <div class="stack-list">{render_gps_logs(gps_logs)}</div>
             </section>
 
-            <section class="{tab_panel_classes('vehicles', active_tab, 'panel span-two')}" id="trip-history" data-tab-section="vehicles" {"hidden" if active_tab != "vehicles" else ""}>
+            <section class="{tab_panel_classes('vehicles', active_tab, 'panel span-two')}" id="trip-history" data-tab-section="vehicles" {"hidden" if active_tab != "vehicles" or active_vehicle_view not in {"trips", "history"} else ""}>
               <div class="panel-header"><div><p class="section-kicker">Trips</p><h2>Trip history and routes</h2></div></div>
               <div class="stack-list">{render_trip_history(trips)}</div>
             </section>
@@ -926,13 +947,13 @@ class FleetCareHandler(BaseHTTPRequestHandler):
         </div>
         <script>window.FLEETCARE_REMINDERS = {mobile_reminders}; window.FLEETCARE_TRIP_ROUTES = {trip_routes}; window.FLEETCARE_TRACKING = {tracking_state};</script>
         """
-            return self.send_html(page("FleetCare Dashboard", content))
+            return self.send_html(page(f"{APP_BRAND} Dashboard", content))
         except Exception as error:
             print(f"Dashboard render failed: {error}")
             fallback = f"""
             <section class="auth-shell">
               <div class="auth-card">
-                <p class="kicker">FleetCare</p>
+                {render_brand_lockup(compact=True)}
                 <h1>Dashboard recovering</h1>
                 <p class="muted">A dashboard module failed to load after sign-in. The app is still running, and this page is here so you are not blocked by a 502 error.</p>
                 <div class="flash error">Dashboard error: {h(error)}</div>
@@ -943,7 +964,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
               </div>
             </section>
             """
-            return self.send_html(page("FleetCare Dashboard Recovery", fallback), status=200)
+            return self.send_html(page(f"{APP_BRAND} Recovery", fallback), status=200)
 
     def render_pdf_report(self, route):
         user = self.require_user()
@@ -1084,10 +1105,11 @@ def page(title, content):
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#1e7e61">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-title" content="FleetCare">
+  <meta name="apple-mobile-web-app-title" content="{h(APP_SHORT_NAME)}">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>{h(title)}</title>
   <link rel="manifest" href="/static/manifest.webmanifest">
+  <link rel="icon" type="image/svg+xml" href="/static/icon-192.svg">
   <link rel="apple-touch-icon" href="/static/icon-192.svg">
   <link rel="stylesheet" href="/static/styles.css">
   <script src="/static/mobile.js" defer></script>
@@ -1113,14 +1135,39 @@ def get_active_tab(route):
     return tab if tab in valid_tabs else "vehicles"
 
 
+def get_vehicle_view(route):
+    valid_views = {"overview", "add", "capture", "trips", "history"}
+    view = parse_qs(route.query).get("vehicles_view", ["overview"])[0]
+    return view if view in valid_views else "overview"
+
+
 def render_tab_link(tab_name, label, active_tab):
     active_class = " is-active" if tab_name == active_tab else ""
     return f'<a class="quick-link{active_class}" href="/dashboard?tab={h(tab_name)}">{h(label)}</a>'
 
 
+def render_subtab_link(tab_name, view_name, label, active_view):
+    active_class = " is-active" if view_name == active_view else ""
+    return f'<a class="sub-link{active_class}" href="/dashboard?tab={h(tab_name)}&vehicles_view={h(view_name)}">{h(label)}</a>'
+
+
 def tab_panel_classes(tab_name, active_tab, base_classes):
     active_class = " is-active" if tab_name == active_tab else ""
     return f"{base_classes} tab-panel{active_class}"
+
+
+def render_brand_lockup(compact=False):
+    brand_class = "brand-lockup compact" if compact else "brand-lockup"
+    subtitle = f'<span class="brand-tag">{h(APP_TAGLINE)}</span>' if not compact else ""
+    return f"""
+    <div class="{brand_class}">
+      <span class="brand-mark" aria-hidden="true">RS</span>
+      <div class="brand-copy">
+        <span class="brand-name">{h(APP_BRAND)}</span>
+        {subtitle}
+      </div>
+    </div>
+    """
 
 
 def render_stat(label, value):
@@ -1292,7 +1339,7 @@ def render_tracking_status(active_trip, gps_logs):
       <div class="tracking-status__hero">
         <div>
           <div class="item-title-row">
-            <div class="item-title">FleetCare GPS</div>
+            <div class="item-title">{h(APP_BRAND)} GPS</div>
             <span class="badge {active_tone}" data-tracking-mode>{active_label}</span>
           </div>
           <p class="muted">Use manual capture for one checkpoint, or start a trip for ongoing route collection.</p>
@@ -1317,7 +1364,7 @@ def render_tracking_status(active_trip, gps_logs):
       <div class="tracking-tips">
         <div class="tracking-tip">
           <strong>Browser mode</strong>
-          <span>Manual capture and trip logging work through the live FleetCare link.</span>
+          <span>Manual capture and trip logging work through the live {h(APP_BRAND)} link.</span>
         </div>
         <div class="tracking-tip">
           <strong>Android app mode</strong>
@@ -1668,7 +1715,7 @@ def slugify(value):
     text = "".join(char.lower() if char.isalnum() else "-" for char in value)
     while "--" in text:
         text = text.replace("--", "-")
-    return text.strip("-") or "fleetcare"
+    return text.strip("-") or "roadsmith-fleet"
 
 
 def row_value(row, key):

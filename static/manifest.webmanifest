@@ -1,7 +1,7 @@
 {
-  "name": "FleetCare",
-  "short_name": "FleetCare",
-  "description": "Company fleet maintenance, fuel, driver assignment, alerts, and reports.",
+  "name": "Roadsmith Fleet",
+  "short_name": "Roadsmith",
+  "description": "Fleet operations workspace for vehicles, fuel, maintenance, trips, GPS, and reports.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

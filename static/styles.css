@@ -67,6 +67,11 @@ a {
   margin-bottom: 24px;
 }
 
+.hero-copy {
+  display: grid;
+  gap: 10px;
+}
+
 .hero h1,
 .panel h2,
 .auth-card h1 {
@@ -95,6 +100,53 @@ a {
   color: #1f2a24;
 }
 
+.brand-lockup {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.brand-lockup.compact {
+  margin-bottom: 8px;
+}
+
+.brand-mark {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 18px;
+  background: linear-gradient(145deg, #18211c 0%, #26342c 100%);
+  color: #f4eadb;
+  font-size: 1.08rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.brand-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.brand-name {
+  font-size: clamp(2rem, 4vw, 3.4rem);
+  line-height: 0.94;
+  letter-spacing: -0.05em;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.brand-tag,
+.hero-subtitle {
+  color: var(--muted);
+}
+
+.hero-subtitle {
+  margin: 0;
+  font-size: 1rem;
+}
+
 .hero-actions {
   display: flex;
   flex-wrap: wrap;
@@ -115,7 +167,34 @@ a {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  margin-bottom: 20px;
+  margin-bottom: 14px;
+}
+
+.sub-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.sub-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.84);
+  border: 1px solid rgba(24, 33, 28, 0.08);
+  text-decoration: none;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.sub-link.is-active {
+  background: rgba(30, 126, 97, 0.1);
+  border-color: rgba(30, 126, 97, 0.26);
+  color: #0d654d;
 }
 
 .report-panel {
@@ -597,6 +676,14 @@ textarea {
 
   .hero {
     display: grid;
+  }
+
+  .brand-lockup {
+    align-items: start;
+  }
+
+  .brand-name {
+    font-size: 2.3rem;
   }
 
   .hero-actions {
