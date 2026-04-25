@@ -20,8 +20,8 @@ PORT = int(os.environ.get("PORT", "8000"))
 SECRET_KEY = load_secret_key()
 COMPANY_INVITE_CODE = os.environ.get("COMPANY_INVITE_CODE", "").strip()
 APP_PUBLIC_URL = os.environ.get("APP_PUBLIC_URL", "https://fleetcare-web.onrender.com").strip()
-APP_BRAND = "Federal Masonry FleetCare"
-APP_SHORT_NAME = "FM FleetCare"
+APP_BRAND = "FederalMasonry FleetCare"
+APP_SHORT_NAME = "FederalMasonry"
 APP_TAGLINE = "Company fleet command"
 
 
@@ -40,7 +40,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
         if path.startswith("/static/"):
             return self.serve_static(path)
         if path == "/":
-            return self.redirect("/dashboard" if self.current_user() else "/login")
+            return self.redirect("/vehicles" if self.current_user() else "/login")
         if path == "/health":
             return self.send_text("ok")
         if path == "/login":
@@ -51,6 +51,8 @@ class FleetCareHandler(BaseHTTPRequestHandler):
             return self.redirect("/login")
         if path == "/dashboard":
             return self.render_dashboard(route)
+        if path in {"/vehicles", "/drivers", "/assignments", "/maintenance", "/fuel", "/alerts"}:
+            return self.render_dashboard(route, forced_tab=path.lstrip("/"))
         if path == "/reports/fleet.pdf":
             return self.render_pdf_report(route)
 
@@ -217,7 +219,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 ),
             )
 
-        self.redirect("/dashboard?tab=vehicles#vehicles")
+        self.redirect(section_url("vehicles", vehicle_view="add", anchor="vehicles"))
 
     def handle_vehicle_update(self, user, form):
         vehicle_id = int(form.get("vehicle_id") or 0)
@@ -242,7 +244,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 ),
             )
 
-        self.redirect("/dashboard?tab=vehicles#vehicles")
+        self.redirect(section_url("vehicles", vehicle_view="history", anchor="vehicles"))
 
     def handle_vehicle_delete(self, user, form):
         vehicle_id = int(form.get("vehicle_id") or 0)
@@ -252,7 +254,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 (vehicle_id, user["id"]),
             )
 
-        self.redirect("/dashboard?tab=vehicles#vehicles")
+        self.redirect(section_url("vehicles", vehicle_view="history", anchor="vehicles"))
 
     def handle_driver_add(self, user, form):
         with get_connection() as connection:
@@ -271,7 +273,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 ),
             )
 
-        self.redirect("/dashboard?tab=drivers#drivers")
+        self.redirect(section_url("drivers", anchor="drivers"))
 
     def handle_driver_update(self, user, form):
         driver_id = int(form.get("driver_id") or 0)
@@ -293,7 +295,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 ),
             )
 
-        self.redirect("/dashboard?tab=drivers#drivers")
+        self.redirect(section_url("drivers", anchor="drivers"))
 
     def handle_driver_delete(self, user, form):
         driver_id = int(form.get("driver_id") or 0)
@@ -303,7 +305,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 (driver_id, user["id"]),
             )
 
-        self.redirect("/dashboard?tab=drivers#drivers")
+        self.redirect(section_url("drivers", anchor="drivers"))
 
     def handle_assignment_add(self, user, form):
         vehicle_id = int(form.get("vehicle_id") or 0)
@@ -333,7 +335,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 ),
             )
 
-        self.redirect("/dashboard?tab=assignments#assignments")
+        self.redirect(section_url("assignments", anchor="assignments"))
 
     def handle_maintenance_add(self, user, form):
         vehicle_id = int(form.get("vehicle_id") or 0)
@@ -372,7 +374,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 (odometer, odometer, vehicle_id, user["id"]),
             )
 
-        self.redirect("/dashboard?tab=maintenance#maintenance")
+        self.redirect(section_url("maintenance", anchor="maintenance"))
 
     def handle_fuel_add(self, user, form):
         vehicle_id = int(form.get("vehicle_id") or 0)
@@ -414,7 +416,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 (odometer, odometer, vehicle_id, user["id"]),
             )
 
-        self.redirect("/dashboard?tab=fuel#fuel")
+        self.redirect(section_url("fuel", anchor="fuel"))
 
     def handle_reminder_add(self, user, form):
         with get_connection() as connection:
@@ -433,7 +435,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 ),
             )
 
-        self.redirect("/dashboard?tab=alerts#reminders")
+        self.redirect(section_url("alerts", anchor="reminders"))
 
     def handle_gps_add(self, user, form):
         vehicle_id = int(form.get("vehicle_id") or 0)
@@ -443,7 +445,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
         accuracy = parse_coordinate(form.get("accuracy_meters"))
 
         if not vehicle_id or latitude is None or longitude is None:
-            return self.redirect("/dashboard?tab=vehicles#gps")
+            return self.redirect(section_url("vehicles", vehicle_view="capture", anchor="gps"))
 
         with get_connection() as connection:
             connection.execute(
@@ -454,7 +456,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 (user["id"], vehicle_id, trip_id, latitude, longitude, accuracy),
             )
 
-        self.redirect("/dashboard?tab=vehicles#gps")
+        self.redirect(section_url("vehicles", vehicle_view="capture", anchor="gps"))
 
     def handle_trip_start(self, user, form):
         vehicle_id = int(form.get("vehicle_id") or 0)
@@ -463,7 +465,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
         label = form.get("label", "")
 
         if not vehicle_id:
-            return self.redirect("/dashboard?tab=vehicles#trip-control")
+            return self.redirect(section_url("vehicles", vehicle_view="trips", anchor="trip-control"))
 
         with get_connection() as connection:
             connection.execute(
@@ -490,7 +492,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                     (user["id"], vehicle_id, trip["id"], latitude, longitude, parse_coordinate(form.get("accuracy_meters"))),
                 )
 
-        self.redirect("/dashboard?tab=vehicles#trip-control")
+        self.redirect(section_url("vehicles", vehicle_view="trips", anchor="trip-control"))
 
     def handle_trip_stop(self, user, form):
         trip_id = int(form.get("trip_id") or 0)
@@ -499,7 +501,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
         accuracy = parse_coordinate(form.get("accuracy_meters"))
 
         if not trip_id:
-            return self.redirect("/dashboard?tab=vehicles#trip-control")
+            return self.redirect(section_url("vehicles", vehicle_view="trips", anchor="trip-control"))
 
         with get_connection() as connection:
             trip = connection.execute(
@@ -507,7 +509,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 (trip_id, user["id"]),
             ).fetchone()
             if not trip:
-                return self.redirect("/dashboard?tab=vehicles#trip-control")
+                return self.redirect(section_url("vehicles", vehicle_view="trips", anchor="trip-control"))
 
             if latitude is not None and longitude is not None:
                 connection.execute(
@@ -526,7 +528,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 (latitude, longitude, trip_id, user["id"]),
             )
 
-        self.redirect("/dashboard?tab=vehicles#trip-history")
+        self.redirect(section_url("vehicles", vehicle_view="history", anchor="trip-history"))
 
     def render_auth_page(self, mode):
         route = urlparse(self.path)
@@ -578,11 +580,11 @@ class FleetCareHandler(BaseHTTPRequestHandler):
         """
         return self.send_html(page(APP_BRAND, content))
 
-    def render_dashboard(self, route):
+    def render_dashboard(self, route, forced_tab=None):
         user = self.require_user()
         if not user:
             return
-        active_tab = get_active_tab(route)
+        active_tab = get_active_tab(route, forced_tab)
         active_vehicle_view = get_vehicle_view(route)
 
         try:
@@ -739,7 +741,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
             content = f"""
         <div class="page-shell">
           <div class="offline-banner" data-offline-banner hidden>
-            Connection lost. Roadsmith Fleet will retry automatically when your phone is back online.
+            Connection lost. {h(APP_BRAND)} will retry automatically when your phone is back online.
           </div>
           <header class="hero">
             <div class="hero-copy">
@@ -1129,9 +1131,12 @@ def h(value):
     return html.escape(str(value or ""))
 
 
-def get_active_tab(route):
+def get_active_tab(route, forced_tab=None):
     valid_tabs = {"vehicles", "drivers", "assignments", "maintenance", "fuel", "alerts"}
-    tab = parse_qs(route.query).get("tab", ["vehicles"])[0]
+    if forced_tab:
+        tab = forced_tab
+    else:
+        tab = parse_qs(route.query).get("tab", ["vehicles"])[0]
     return tab if tab in valid_tabs else "vehicles"
 
 
@@ -1143,12 +1148,12 @@ def get_vehicle_view(route):
 
 def render_tab_link(tab_name, label, active_tab):
     active_class = " is-active" if tab_name == active_tab else ""
-    return f'<a class="quick-link{active_class}" href="/dashboard?tab={h(tab_name)}">{h(label)}</a>'
+    return f'<a class="quick-link{active_class}" href="{section_url(tab_name)}">{h(label)}</a>'
 
 
 def render_subtab_link(tab_name, view_name, label, active_view):
     active_class = " is-active" if view_name == active_view else ""
-    return f'<a class="sub-link{active_class}" href="/dashboard?tab={h(tab_name)}&vehicles_view={h(view_name)}">{h(label)}</a>'
+    return f'<a class="sub-link{active_class}" href="{section_url(tab_name, vehicle_view=view_name)}">{h(label)}</a>'
 
 
 def tab_panel_classes(tab_name, active_tab, base_classes):
@@ -1168,6 +1173,16 @@ def render_brand_lockup(compact=False):
       </div>
     </div>
     """
+
+
+def section_url(tab_name, vehicle_view=None, anchor=None):
+    base = f"/{tab_name}"
+    params = []
+    if tab_name == "vehicles" and vehicle_view:
+        params.append(("vehicles_view", vehicle_view))
+    query = f"?{urlencode(params)}" if params else ""
+    suffix = f"#{anchor}" if anchor else ""
+    return f"{base}{query}{suffix}"
 
 
 def render_stat(label, value):
