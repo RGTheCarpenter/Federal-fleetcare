@@ -89,6 +89,12 @@ class FleetCareHandler(BaseHTTPRequestHandler):
             return self.handle_fuel_add(user, form)
         if path == "/reminders/add":
             return self.handle_reminder_add(user, form)
+        if path == "/gps/add":
+            return self.handle_gps_add(user, form)
+        if path == "/trips/start":
+            return self.handle_trip_start(user, form)
+        if path == "/trips/stop":
+            return self.handle_trip_stop(user, form)
 
         return self.not_found()
 
@@ -426,6 +432,99 @@ class FleetCareHandler(BaseHTTPRequestHandler):
 
         self.redirect("/dashboard?tab=alerts#reminders")
 
+    def handle_gps_add(self, user, form):
+        vehicle_id = int(form.get("vehicle_id") or 0)
+        trip_id = int(form.get("trip_id") or 0) or None
+        latitude = parse_coordinate(form.get("latitude"))
+        longitude = parse_coordinate(form.get("longitude"))
+        accuracy = parse_coordinate(form.get("accuracy_meters"))
+
+        if not vehicle_id or latitude is None or longitude is None:
+            return self.redirect("/dashboard?tab=vehicles#gps")
+
+        with get_connection() as connection:
+            connection.execute(
+                """
+                INSERT INTO gps_logs (user_id, vehicle_id, trip_id, latitude, longitude, accuracy_meters)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (user["id"], vehicle_id, trip_id, latitude, longitude, accuracy),
+            )
+
+        self.redirect("/dashboard?tab=vehicles#gps")
+
+    def handle_trip_start(self, user, form):
+        vehicle_id = int(form.get("vehicle_id") or 0)
+        latitude = parse_coordinate(form.get("latitude"))
+        longitude = parse_coordinate(form.get("longitude"))
+        label = form.get("label", "")
+
+        if not vehicle_id:
+            return self.redirect("/dashboard?tab=vehicles#trip-control")
+
+        with get_connection() as connection:
+            connection.execute(
+                "UPDATE trips SET status = 'Completed', ended_at = CURRENT_TIMESTAMP WHERE user_id = ? AND status = 'Active'",
+                (user["id"],),
+            )
+            connection.execute(
+                """
+                INSERT INTO trips (user_id, vehicle_id, label, start_latitude, start_longitude, status)
+                VALUES (?, ?, ?, ?, ?, 'Active')
+                """,
+                (user["id"], vehicle_id, label or None, latitude, longitude),
+            )
+            trip = connection.execute(
+                "SELECT id FROM trips WHERE user_id = ? AND vehicle_id = ? AND status = 'Active' ORDER BY started_at DESC LIMIT 1",
+                (user["id"], vehicle_id),
+            ).fetchone()
+            if trip and latitude is not None and longitude is not None:
+                connection.execute(
+                    """
+                    INSERT INTO gps_logs (user_id, vehicle_id, trip_id, latitude, longitude, accuracy_meters)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (user["id"], vehicle_id, trip["id"], latitude, longitude, parse_coordinate(form.get("accuracy_meters"))),
+                )
+
+        self.redirect("/dashboard?tab=vehicles#trip-control")
+
+    def handle_trip_stop(self, user, form):
+        trip_id = int(form.get("trip_id") or 0)
+        latitude = parse_coordinate(form.get("latitude"))
+        longitude = parse_coordinate(form.get("longitude"))
+        accuracy = parse_coordinate(form.get("accuracy_meters"))
+
+        if not trip_id:
+            return self.redirect("/dashboard?tab=vehicles#trip-control")
+
+        with get_connection() as connection:
+            trip = connection.execute(
+                "SELECT id, vehicle_id FROM trips WHERE id = ? AND user_id = ? AND status = 'Active'",
+                (trip_id, user["id"]),
+            ).fetchone()
+            if not trip:
+                return self.redirect("/dashboard?tab=vehicles#trip-control")
+
+            if latitude is not None and longitude is not None:
+                connection.execute(
+                    """
+                    INSERT INTO gps_logs (user_id, vehicle_id, trip_id, latitude, longitude, accuracy_meters)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (user["id"], trip["vehicle_id"], trip_id, latitude, longitude, accuracy),
+                )
+            connection.execute(
+                """
+                UPDATE trips
+                SET status = 'Completed', ended_at = CURRENT_TIMESTAMP, end_latitude = ?, end_longitude = ?
+                WHERE id = ? AND user_id = ?
+                """,
+                (latitude, longitude, trip_id, user["id"]),
+            )
+
+        self.redirect("/dashboard?tab=vehicles#trip-history")
+
     def render_auth_page(self, mode):
         route = urlparse(self.path)
         message = parse_qs(route.query).get("error", [""])[0]
@@ -484,7 +583,41 @@ class FleetCareHandler(BaseHTTPRequestHandler):
 
         with get_connection() as connection:
             vehicles = connection.execute(
-                "SELECT * FROM vehicles WHERE user_id = ? ORDER BY created_at DESC",
+                """
+                SELECT
+                    v.*,
+                    (
+                        SELECT g.latitude
+                        FROM gps_logs g
+                        WHERE g.vehicle_id = v.id AND g.user_id = v.user_id
+                        ORDER BY g.created_at DESC
+                        LIMIT 1
+                    ) AS last_latitude,
+                    (
+                        SELECT g.longitude
+                        FROM gps_logs g
+                        WHERE g.vehicle_id = v.id AND g.user_id = v.user_id
+                        ORDER BY g.created_at DESC
+                        LIMIT 1
+                    ) AS last_longitude,
+                    (
+                        SELECT g.accuracy_meters
+                        FROM gps_logs g
+                        WHERE g.vehicle_id = v.id AND g.user_id = v.user_id
+                        ORDER BY g.created_at DESC
+                        LIMIT 1
+                    ) AS last_accuracy_meters,
+                    (
+                        SELECT g.created_at
+                        FROM gps_logs g
+                        WHERE g.vehicle_id = v.id AND g.user_id = v.user_id
+                        ORDER BY g.created_at DESC
+                        LIMIT 1
+                    ) AS last_location_at
+                FROM vehicles v
+                WHERE v.user_id = ?
+                ORDER BY v.created_at DESC
+                """,
                 (user["id"],),
             ).fetchall()
             drivers = connection.execute(
@@ -534,10 +667,59 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 """,
                 (user["id"],),
             ).fetchall()
+            gps_logs = connection.execute(
+                """
+                SELECT g.*, v.name AS vehicle_name, v.plate
+                FROM gps_logs g
+                JOIN vehicles v ON v.id = g.vehicle_id
+                WHERE g.user_id = ?
+                ORDER BY g.created_at DESC
+                LIMIT 12
+                """,
+                (user["id"],),
+            ).fetchall()
+            active_trip = connection.execute(
+                """
+                SELECT t.*, v.name AS vehicle_name, v.plate
+                FROM trips t
+                JOIN vehicles v ON v.id = t.vehicle_id
+                WHERE t.user_id = ? AND t.status = 'Active'
+                ORDER BY t.started_at DESC
+                LIMIT 1
+                """,
+                (user["id"],),
+            ).fetchone()
+            trips = connection.execute(
+                """
+                SELECT
+                    t.*,
+                    v.name AS vehicle_name,
+                    v.plate,
+                    COUNT(g.id) AS point_count
+                FROM trips t
+                JOIN vehicles v ON v.id = t.vehicle_id
+                LEFT JOIN gps_logs g ON g.trip_id = t.id
+                WHERE t.user_id = ?
+                GROUP BY t.id, v.name, v.plate
+                ORDER BY t.started_at DESC
+                LIMIT 8
+                """,
+                (user["id"],),
+            ).fetchall()
+            trip_points = connection.execute(
+                """
+                SELECT trip_id, latitude, longitude, created_at
+                FROM gps_logs
+                WHERE user_id = ? AND trip_id IS NOT NULL
+                ORDER BY trip_id, created_at
+                """,
+                (user["id"],),
+            ).fetchall()
 
         alerts = collect_alerts(reminders, assignments)
         stats = build_stats(vehicles, maintenance, fuel_logs, reminders)
         mobile_reminders = json.dumps(build_mobile_reminders(reminders), separators=(",", ":"))
+        trip_routes = json.dumps(build_trip_routes(trip_points), separators=(",", ":"))
 
         content = f"""
         <div class="page-shell">
@@ -641,6 +823,16 @@ class FleetCareHandler(BaseHTTPRequestHandler):
               </form>
             </section>
 
+            <section class="{tab_panel_classes('vehicles', active_tab, 'panel')}" id="gps" data-tab-section="vehicles" {"hidden" if active_tab != "vehicles" else ""}>
+              <div class="panel-header"><div><p class="section-kicker">GPS</p><h2>Log current location</h2></div></div>
+              {render_gps_form(vehicles, active_trip)}
+            </section>
+
+            <section class="{tab_panel_classes('vehicles', active_tab, 'panel')}" id="trip-control" data-tab-section="vehicles" {"hidden" if active_tab != "vehicles" else ""}>
+              <div class="panel-header"><div><p class="section-kicker">Trips</p><h2>Trip controls</h2></div></div>
+              {render_trip_controls(vehicles, active_trip)}
+            </section>
+
             <section class="{tab_panel_classes('drivers', active_tab, 'panel')}" id="drivers" data-tab-section="drivers" {"hidden" if active_tab != "drivers" else ""}>
               <div class="panel-header"><div><p class="section-kicker">Drivers</p><h2>Add driver</h2></div></div>
               <form method="post" action="/drivers/add" class="form-grid">
@@ -685,6 +877,16 @@ class FleetCareHandler(BaseHTTPRequestHandler):
               <div class="stack-list">{render_vehicles(vehicles)}</div>
             </section>
 
+            <section class="{tab_panel_classes('vehicles', active_tab, 'panel span-two')}" data-tab-section="vehicles" {"hidden" if active_tab != "vehicles" else ""}>
+              <div class="panel-header"><div><p class="section-kicker">GPS</p><h2>Recent location history</h2></div></div>
+              <div class="stack-list">{render_gps_logs(gps_logs)}</div>
+            </section>
+
+            <section class="{tab_panel_classes('vehicles', active_tab, 'panel span-two')}" id="trip-history" data-tab-section="vehicles" {"hidden" if active_tab != "vehicles" else ""}>
+              <div class="panel-header"><div><p class="section-kicker">Trips</p><h2>Trip history and routes</h2></div></div>
+              <div class="stack-list">{render_trip_history(trips)}</div>
+            </section>
+
             <section class="{tab_panel_classes('drivers', active_tab, 'panel span-two')}" data-tab-section="drivers" {"hidden" if active_tab != "drivers" else ""}>
               <div class="panel-header"><div><p class="section-kicker">Current state</p><h2>Drivers</h2></div></div>
               <div class="stack-list">{render_drivers(drivers)}</div>
@@ -706,7 +908,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
             </section>
           </main>
         </div>
-        <script>window.FLEETCARE_REMINDERS = {mobile_reminders};</script>
+        <script>window.FLEETCARE_REMINDERS = {mobile_reminders}; window.FLEETCARE_TRIP_ROUTES = {trip_routes};</script>
         """
         return self.send_html(page("FleetCare Dashboard", content))
 
@@ -892,10 +1094,13 @@ def render_stat(label, value):
     return f'<article class="stat-card"><strong>{h(value)}</strong><span>{h(label)}</span></article>'
 
 
-def render_vehicle_options(vehicles):
+def render_vehicle_options(vehicles, selected_id=None):
     if not vehicles:
         return '<option value="">Add a vehicle first</option>'
-    return "".join(f'<option value="{vehicle["id"]}">{h(vehicle["name"])} - {h(vehicle["plate"])}</option>' for vehicle in vehicles)
+    return "".join(
+        f'<option value="{vehicle["id"]}" {"selected" if str(vehicle["id"]) == str(selected_id) else ""}>{h(vehicle["name"])} - {h(vehicle["plate"])}</option>'
+        for vehicle in vehicles
+    )
 
 
 def render_driver_options(drivers):
@@ -971,6 +1176,72 @@ def render_reminder_form(vehicles):
     """
 
 
+def render_gps_form(vehicles, active_trip=None):
+    if not vehicles:
+        return '<div class="empty-state">Add a vehicle first before logging GPS positions.</div>'
+    trip_id = row_value(active_trip, "id") or ""
+    active_vehicle_id = row_value(active_trip, "vehicle_id") or ""
+    return f"""
+    <form method="post" action="/gps/add" class="form-grid" data-gps-form>
+      <input type="hidden" name="trip_id" value="{h(trip_id)}">
+      <label><span>Vehicle</span><select name="vehicle_id" required>{render_vehicle_options(vehicles, active_vehicle_id)}</select></label>
+      <label><span>Latitude</span><input type="text" name="latitude" readonly required></label>
+      <label><span>Longitude</span><input type="text" name="longitude" readonly required></label>
+      <label><span>Accuracy (meters)</span><input type="text" name="accuracy_meters" readonly></label>
+      <div class="gps-actions full-span">
+        <button type="button" class="ghost-btn" data-capture-gps>Use my current location</button>
+        <button type="submit" class="primary-btn">Save GPS location</button>
+      </div>
+      <p class="muted full-span">Tap the location button on an iPhone or Android device and allow location permission when asked.</p>
+    </form>
+    """
+
+
+def render_trip_controls(vehicles, active_trip):
+    if active_trip:
+        return f"""
+        <div class="trip-card">
+          <div class="item-head">
+            <div class="item-title-row">
+              <div class="item-title">{h(row_value(active_trip, 'label') or 'Active trip')}</div>
+              <span class="badge warning">In progress</span>
+            </div>
+            <strong>{h(row_value(active_trip, 'vehicle_name'))} - {h(row_value(active_trip, 'plate'))}</strong>
+          </div>
+          <div class="muted">Started: {h(row_value(active_trip, 'started_at'))}</div>
+          <form method="post" action="/trips/stop" class="form-grid compact-form" data-gps-form>
+            <input type="hidden" name="trip_id" value="{h(row_value(active_trip, 'id'))}">
+            <label class="full-span"><span>Stop note</span><input type="text" name="label" value="{h(row_value(active_trip, 'label') or '')}" readonly></label>
+            <label><span>Latitude</span><input type="text" name="latitude" readonly></label>
+            <label><span>Longitude</span><input type="text" name="longitude" readonly></label>
+            <label><span>Accuracy (meters)</span><input type="text" name="accuracy_meters" readonly></label>
+            <div class="gps-actions full-span">
+              <button type="button" class="ghost-btn" data-capture-gps>Capture stop location</button>
+              <button type="submit" class="danger-btn">Stop trip</button>
+            </div>
+          </form>
+        </div>
+        """
+
+    if not vehicles:
+        return '<div class="empty-state">Add a vehicle first before starting a trip.</div>'
+
+    return f"""
+    <form method="post" action="/trips/start" class="form-grid trip-card" data-gps-form data-auto-gps>
+      <label><span>Vehicle</span><select name="vehicle_id" required>{render_vehicle_options(vehicles)}</select></label>
+      <label><span>Trip label</span><input type="text" name="label" placeholder="Morning route"></label>
+      <label><span>Latitude</span><input type="text" name="latitude" readonly></label>
+      <label><span>Longitude</span><input type="text" name="longitude" readonly></label>
+      <label><span>Accuracy (meters)</span><input type="text" name="accuracy_meters" readonly></label>
+      <div class="gps-actions full-span">
+        <button type="button" class="ghost-btn" data-capture-gps>Capture start location</button>
+        <button type="submit" class="primary-btn">Start trip</button>
+      </div>
+      <p class="muted full-span">After you start a trip, FleetCare can keep saving GPS points while the app stays open on your phone.</p>
+    </form>
+    """
+
+
 def render_alerts(alerts):
     if not alerts:
         return '<div class="empty-state">No urgent alerts right now.</div>'
@@ -1007,6 +1278,7 @@ def render_vehicles(vehicles):
           </div>
           <div class="muted">{h(vehicle['model'] or 'Model not set')} {('- ' + str(vehicle['year'])) if vehicle['year'] else ''}</div>
           <div class="muted">{vehicle['odometer']} km</div>
+          {render_vehicle_location(vehicle)}
           <details class="edit-box">
             <summary>Edit vehicle</summary>
             <form method="post" action="/vehicles/update" class="form-grid compact-form">
@@ -1145,6 +1417,28 @@ def render_fuel_logs(fuel_logs):
         </article>
         """
         for item in fuel_logs
+    )
+
+
+def render_gps_logs(gps_logs):
+    if not gps_logs:
+        return '<div class="empty-state">No GPS points saved yet.</div>'
+    return "".join(
+        f"""
+        <article class="list-item">
+          <div class="item-head">
+            <div class="item-title-row">
+              <div class="item-title">{h(item['vehicle_name'])}</div>
+              <span class="badge active">{h(item['created_at'])}</span>
+            </div>
+            <strong>{h(item['plate'])}</strong>
+          </div>
+          <div class="muted">{round(float(item['latitude']), 6)}, {round(float(item['longitude']), 6)}</div>
+          <div class="muted">{format_accuracy(item['accuracy_meters'])}</div>
+          <a class="ghost-btn map-link" href="{gps_map_url(item['latitude'], item['longitude'])}" target="_blank" rel="noreferrer">Open in maps</a>
+        </article>
+        """
+        for item in gps_logs
     )
 
 
@@ -1362,3 +1656,77 @@ def build_mobile_reminders(reminders):
             }
         )
     return items
+
+
+def render_vehicle_location(vehicle):
+    latitude = row_value(vehicle, "last_latitude")
+    longitude = row_value(vehicle, "last_longitude")
+    recorded_at = row_value(vehicle, "last_location_at")
+    if latitude is None or longitude is None:
+        return '<div class="muted">Last GPS: not captured yet.</div>'
+
+    return f"""
+    <div class="gps-summary">
+      <div class="muted">Last GPS: {round(float(latitude), 6)}, {round(float(longitude), 6)} {f'| {h(recorded_at)}' if recorded_at else ''}</div>
+      <a class="ghost-btn map-link" href="{gps_map_url(latitude, longitude)}" target="_blank" rel="noreferrer">Open in maps</a>
+    </div>
+    """
+
+
+def gps_map_url(latitude, longitude):
+    return f"https://www.google.com/maps?q={float(latitude):.6f},{float(longitude):.6f}"
+
+
+def format_accuracy(value):
+    if value is None:
+        return "Accuracy not provided."
+    return f"Accuracy: {round(float(value), 1)} meters"
+
+
+def parse_coordinate(value):
+    text = (value or "").strip()
+    if not text:
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def render_trip_history(trips):
+    if not trips:
+        return '<div class="empty-state">No trips recorded yet.</div>'
+    return "".join(
+        f"""
+        <article class="list-item">
+          <div class="item-head">
+            <div class="item-title-row">
+              <div class="item-title">{h(row_value(trip, 'label') or 'Trip')}</div>
+              <span class="badge {'warning' if row_value(trip, 'status') == 'Active' else 'active'}">{h(row_value(trip, 'status'))}</span>
+            </div>
+            <strong>{h(row_value(trip, 'vehicle_name'))} - {h(row_value(trip, 'plate'))}</strong>
+          </div>
+          <div class="muted">Started: {h(row_value(trip, 'started_at'))}</div>
+          <div class="muted">{f"Ended: {h(row_value(trip, 'ended_at'))}" if row_value(trip, 'ended_at') else "Trip still active."}</div>
+          <div class="muted">{int(row_value(trip, 'point_count') or 0)} GPS points logged</div>
+          <div class="trip-map" data-trip-map data-trip-id="{h(row_value(trip, 'id'))}">Route map will load here.</div>
+        </article>
+        """
+        for trip in trips
+    )
+
+
+def build_trip_routes(trip_points):
+    routes = {}
+    for point in trip_points:
+        trip_id = row_value(point, "trip_id")
+        if trip_id is None:
+            continue
+        routes.setdefault(str(trip_id), []).append(
+            {
+                "lat": float(row_value(point, "latitude")),
+                "lng": float(row_value(point, "longitude")),
+                "at": row_value(point, "created_at"),
+            }
+        )
+    return routes

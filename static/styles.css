@@ -376,6 +376,33 @@ textarea {
   margin-top: 12px;
 }
 
+.gps-actions,
+.gps-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.trip-card {
+  border-radius: 18px;
+  padding: 16px;
+  background: var(--panel);
+  border: 1px solid rgba(24, 33, 28, 0.08);
+}
+
+.map-link {
+  width: fit-content;
+}
+
+.trip-map svg {
+  width: 100%;
+  max-width: 420px;
+  display: block;
+  margin-top: 10px;
+  border-radius: 18px;
+}
+
 .item-head,
 .item-title-row {
   display: flex;

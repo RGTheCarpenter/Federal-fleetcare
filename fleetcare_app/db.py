@@ -201,6 +201,38 @@ def schema_statements(engine):
             FOREIGN KEY(vehicle_id) REFERENCES vehicles(id) ON DELETE CASCADE
         )
         """,
+        f"""
+        CREATE TABLE IF NOT EXISTS trips (
+            id {id_column},
+            user_id {integer_fk} NOT NULL,
+            vehicle_id {integer_fk} NOT NULL,
+            label TEXT,
+            start_latitude {real_type},
+            start_longitude {real_type},
+            end_latitude {real_type},
+            end_longitude {real_type},
+            status TEXT NOT NULL DEFAULT 'Active',
+            started_at {timestamp_type},
+            ended_at TIMESTAMP,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY(vehicle_id) REFERENCES vehicles(id) ON DELETE CASCADE
+        )
+        """,
+        f"""
+        CREATE TABLE IF NOT EXISTS gps_logs (
+            id {id_column},
+            user_id {integer_fk} NOT NULL,
+            vehicle_id {integer_fk} NOT NULL,
+            trip_id {integer_fk},
+            latitude {real_type} NOT NULL,
+            longitude {real_type} NOT NULL,
+            accuracy_meters {real_type},
+            created_at {timestamp_type},
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY(vehicle_id) REFERENCES vehicles(id) ON DELETE CASCADE,
+            FOREIGN KEY(trip_id) REFERENCES trips(id) ON DELETE SET NULL
+        )
+        """,
     ]
 
 
@@ -210,6 +242,24 @@ def migration_statements():
         "ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS photo_data TEXT",
         "ALTER TABLE maintenance_logs ADD COLUMN IF NOT EXISTS attachment_name TEXT",
         "ALTER TABLE maintenance_logs ADD COLUMN IF NOT EXISTS attachment_data TEXT",
+        """
+        CREATE TABLE IF NOT EXISTS trips (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            vehicle_id INTEGER NOT NULL,
+            label TEXT,
+            start_latitude REAL,
+            start_longitude REAL,
+            end_latitude REAL,
+            end_longitude REAL,
+            status TEXT NOT NULL DEFAULT 'Active',
+            started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            ended_at TIMESTAMP,
+            FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY(vehicle_id) REFERENCES vehicles(id) ON DELETE CASCADE
+        )
+        """,
+        "ALTER TABLE gps_logs ADD COLUMN IF NOT EXISTS trip_id INTEGER",
     ]
 
 
