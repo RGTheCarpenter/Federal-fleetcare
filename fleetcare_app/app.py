@@ -1753,7 +1753,7 @@ def build_trip_routes(trip_points):
             {
                 "lat": float(row_value(point, "latitude")),
                 "lng": float(row_value(point, "longitude")),
-                "at": row_value(point, "created_at"),
+                "at": str(row_value(point, "created_at") or ""),
             }
         )
     return routes
