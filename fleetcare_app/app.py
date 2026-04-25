@@ -20,8 +20,8 @@ PORT = int(os.environ.get("PORT", "8000"))
 SECRET_KEY = load_secret_key()
 COMPANY_INVITE_CODE = os.environ.get("COMPANY_INVITE_CODE", "").strip()
 APP_PUBLIC_URL = os.environ.get("APP_PUBLIC_URL", "https://fleetcare-web.onrender.com").strip()
-APP_BRAND = "FederalMasonry FleetCare"
-APP_SHORT_NAME = "FederalMasonry"
+APP_BRAND = "RG Fleet"
+APP_SHORT_NAME = "RG Fleet"
 APP_TAGLINE = "Company fleet command"
 
 
@@ -1730,7 +1730,7 @@ def slugify(value):
     text = "".join(char.lower() if char.isalnum() else "-" for char in value)
     while "--" in text:
         text = text.replace("--", "-")
-    return text.strip("-") or "federal-masonry-fleetcare"
+    return text.strip("-") or "rg-fleet"
 
 
 def row_value(row, key):

@@ -1,6 +1,6 @@
 {
-  "name": "Federal Masonry FleetCare",
-  "short_name": "FM FleetCare",
+  "name": "RG Fleet",
+  "short_name": "RG Fleet",
   "description": "Fleet operations workspace for vehicles, fuel, maintenance, trips, GPS, and reports.",
   "start_url": "/",
   "scope": "/",
