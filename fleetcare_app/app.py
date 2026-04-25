@@ -695,12 +695,14 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                     t.*,
                     v.name AS vehicle_name,
                     v.plate,
-                    COUNT(g.id) AS point_count
+                    (
+                        SELECT COUNT(*)
+                        FROM gps_logs g
+                        WHERE g.trip_id = t.id
+                    ) AS point_count
                 FROM trips t
                 JOIN vehicles v ON v.id = t.vehicle_id
-                LEFT JOIN gps_logs g ON g.trip_id = t.id
                 WHERE t.user_id = ?
-                GROUP BY t.id, v.name, v.plate
                 ORDER BY t.started_at DESC
                 LIMIT 8
                 """,
