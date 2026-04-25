@@ -730,6 +730,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
             stats = build_stats(vehicles, maintenance, fuel_logs, reminders)
             mobile_reminders = json.dumps(build_mobile_reminders(reminders), separators=(",", ":"))
             trip_routes = json.dumps(build_trip_routes(trip_points), separators=(",", ":"))
+            tracking_state = json.dumps(build_tracking_payload(active_trip, gps_logs), separators=(",", ":"))
 
             content = f"""
         <div class="page-shell">
@@ -812,6 +813,11 @@ class FleetCareHandler(BaseHTTPRequestHandler):
           </section>
 
           <main class="layout">
+            <section class="{tab_panel_classes('vehicles', active_tab, 'panel')}" id="tracking-status" data-tab-section="vehicles" {"hidden" if active_tab != "vehicles" else ""}>
+              <div class="panel-header"><div><p class="section-kicker">Tracking</p><h2>Tracking status</h2></div></div>
+              {render_tracking_status(active_trip, gps_logs)}
+            </section>
+
             <section class="{tab_panel_classes('vehicles', active_tab, 'panel')}" id="vehicles" data-tab-section="vehicles" {"hidden" if active_tab != "vehicles" else ""}>
               <div class="panel-header"><div><p class="section-kicker">Fleet</p><h2>Add vehicle</h2></div></div>
               <form method="post" action="/vehicles/add" class="form-grid">
@@ -834,12 +840,12 @@ class FleetCareHandler(BaseHTTPRequestHandler):
             </section>
 
             <section class="{tab_panel_classes('vehicles', active_tab, 'panel')}" id="gps" data-tab-section="vehicles" {"hidden" if active_tab != "vehicles" else ""}>
-              <div class="panel-header"><div><p class="section-kicker">GPS</p><h2>Log current location</h2></div></div>
+              <div class="panel-header"><div><p class="section-kicker">GPS</p><h2>Capture a location</h2></div></div>
               {render_gps_form(vehicles, active_trip)}
             </section>
 
             <section class="{tab_panel_classes('vehicles', active_tab, 'panel')}" id="trip-control" data-tab-section="vehicles" {"hidden" if active_tab != "vehicles" else ""}>
-              <div class="panel-header"><div><p class="section-kicker">Trips</p><h2>Trip controls</h2></div></div>
+              <div class="panel-header"><div><p class="section-kicker">Trips</p><h2>Trip tracking</h2></div></div>
               {render_trip_controls(vehicles, active_trip)}
             </section>
 
@@ -918,7 +924,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
             </section>
           </main>
         </div>
-        <script>window.FLEETCARE_REMINDERS = {mobile_reminders}; window.FLEETCARE_TRIP_ROUTES = {trip_routes};</script>
+        <script>window.FLEETCARE_REMINDERS = {mobile_reminders}; window.FLEETCARE_TRIP_ROUTES = {trip_routes}; window.FLEETCARE_TRACKING = {tracking_state};</script>
         """
             return self.send_html(page("FleetCare Dashboard", content))
         except Exception as error:
@@ -1209,17 +1215,17 @@ def render_gps_form(vehicles, active_trip=None):
     trip_id = row_value(active_trip, "id") or ""
     active_vehicle_id = row_value(active_trip, "vehicle_id") or ""
     return f"""
-    <form method="post" action="/gps/add" class="form-grid" data-gps-form>
+    <form method="post" action="/gps/add" class="form-grid tracking-form" data-gps-form data-trip-log-form>
       <input type="hidden" name="trip_id" value="{h(trip_id)}">
       <label><span>Vehicle</span><select name="vehicle_id" required>{render_vehicle_options(vehicles, active_vehicle_id)}</select></label>
       <label><span>Latitude</span><input type="text" name="latitude" readonly required></label>
       <label><span>Longitude</span><input type="text" name="longitude" readonly required></label>
       <label><span>Accuracy (meters)</span><input type="text" name="accuracy_meters" readonly></label>
       <div class="gps-actions full-span">
-        <button type="button" class="ghost-btn" data-capture-gps>Use my current location</button>
+        <button type="button" class="ghost-btn" data-capture-gps>Use my live location</button>
         <button type="submit" class="primary-btn">Save GPS location</button>
       </div>
-      <p class="muted full-span">Tap the location button on an iPhone or Android device and allow location permission when asked.</p>
+      <p class="muted full-span">Use this when you want one exact checkpoint. On phones, allow location access when FleetCare asks.</p>
     </form>
     """
 
@@ -1236,7 +1242,8 @@ def render_trip_controls(vehicles, active_trip):
             <strong>{h(row_value(active_trip, 'vehicle_name'))} - {h(row_value(active_trip, 'plate'))}</strong>
           </div>
           <div class="muted">Started: {h(row_value(active_trip, 'started_at'))}</div>
-          <form method="post" action="/trips/stop" class="form-grid compact-form" data-gps-form>
+          <p class="muted trip-note">FleetCare keeps saving route points while this screen stays active. In the Android app, it also refreshes again as soon as the app comes back to the foreground.</p>
+          <form method="post" action="/trips/stop" class="form-grid compact-form tracking-form" data-gps-form>
             <input type="hidden" name="trip_id" value="{h(row_value(active_trip, 'id'))}">
             <label class="full-span"><span>Stop note</span><input type="text" name="label" value="{h(row_value(active_trip, 'label') or '')}" readonly></label>
             <label><span>Latitude</span><input type="text" name="latitude" readonly></label>
@@ -1254,7 +1261,7 @@ def render_trip_controls(vehicles, active_trip):
         return '<div class="empty-state">Add a vehicle first before starting a trip.</div>'
 
     return f"""
-    <form method="post" action="/trips/start" class="form-grid trip-card" data-gps-form data-auto-gps>
+    <form method="post" action="/trips/start" class="form-grid trip-card tracking-form" data-gps-form data-auto-gps>
       <label><span>Vehicle</span><select name="vehicle_id" required>{render_vehicle_options(vehicles)}</select></label>
       <label><span>Trip label</span><input type="text" name="label" placeholder="Morning route"></label>
       <label><span>Latitude</span><input type="text" name="latitude" readonly></label>
@@ -1264,8 +1271,60 @@ def render_trip_controls(vehicles, active_trip):
         <button type="button" class="ghost-btn" data-capture-gps>Capture start location</button>
         <button type="submit" class="primary-btn">Start trip</button>
       </div>
-      <p class="muted full-span">After you start a trip, FleetCare can keep saving GPS points while the app stays open on your phone.</p>
+      <p class="muted full-span">Trip mode is best for route history. FleetCare saves a start point, then keeps collecting GPS checkpoints while the trip stays active.</p>
     </form>
+    """
+
+
+def render_tracking_status(active_trip, gps_logs):
+    latest_point = gps_logs[0] if gps_logs else None
+    active_label = "Trip active" if active_trip else "Ready"
+    active_tone = "warning" if active_trip else "active"
+    last_saved = h(row_value(latest_point, "created_at") or "No GPS point saved yet")
+    vehicle_name = h(row_value(active_trip, "vehicle_name") or row_value(latest_point, "vehicle_name") or "No vehicle selected")
+    plate = h(row_value(active_trip, "plate") or row_value(latest_point, "plate") or "")
+    location_text = "No coordinates saved yet."
+    if latest_point:
+        location_text = f"{round(float(row_value(latest_point, 'latitude')), 6)}, {round(float(row_value(latest_point, 'longitude')), 6)}"
+
+    return f"""
+    <div class="tracking-status" data-tracking-summary>
+      <div class="tracking-status__hero">
+        <div>
+          <div class="item-title-row">
+            <div class="item-title">FleetCare GPS</div>
+            <span class="badge {active_tone}" data-tracking-mode>{active_label}</span>
+          </div>
+          <p class="muted">Use manual capture for one checkpoint, or start a trip for ongoing route collection.</p>
+        </div>
+        <button type="button" class="ghost-btn" data-request-location>Allow location access</button>
+      </div>
+      <div class="tracking-grid">
+        <div class="tracking-pill">
+          <strong>Tracking target</strong>
+          <span>{vehicle_name}{f" - {plate}" if plate else ""}</span>
+        </div>
+        <div class="tracking-pill">
+          <strong>Last saved point</strong>
+          <span data-tracking-last-saved>{last_saved}</span>
+        </div>
+        <div class="tracking-pill">
+          <strong>Last coordinates</strong>
+          <span>{location_text}</span>
+        </div>
+      </div>
+      <div class="flash error tracking-error" data-tracking-error hidden></div>
+      <div class="tracking-tips">
+        <div class="tracking-tip">
+          <strong>Browser mode</strong>
+          <span>Manual capture and trip logging work through the live FleetCare link.</span>
+        </div>
+        <div class="tracking-tip">
+          <strong>Android app mode</strong>
+          <span>The wrapper is now prepared for location permissions, notifications, and the release paperwork needed for deeper background tracking.</span>
+        </div>
+      </div>
+    </div>
     """
 
 
@@ -1683,6 +1742,17 @@ def build_mobile_reminders(reminders):
             }
         )
     return items
+
+
+def build_tracking_payload(active_trip, gps_logs):
+    latest_point = gps_logs[0] if gps_logs else None
+    return {
+        "tripActive": bool(active_trip),
+        "tripId": row_value(active_trip, "id"),
+        "tripVehicle": row_value(active_trip, "vehicle_name"),
+        "lastSavedAt": str(row_value(latest_point, "created_at") or ""),
+        "lastVehicle": row_value(latest_point, "vehicle_name"),
+    }
 
 
 def render_vehicle_location(vehicle):

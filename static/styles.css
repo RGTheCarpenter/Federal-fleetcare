@@ -384,11 +384,67 @@ textarea {
   align-items: center;
 }
 
+.tracking-status,
 .trip-card {
   border-radius: 18px;
   padding: 16px;
   background: var(--panel);
   border: 1px solid rgba(24, 33, 28, 0.08);
+}
+
+.tracking-status {
+  display: grid;
+  gap: 16px;
+}
+
+.tracking-status__hero,
+.tracking-grid,
+.tracking-tips {
+  display: grid;
+  gap: 12px;
+}
+
+.tracking-status__hero {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+
+.tracking-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.tracking-pill,
+.tracking-tip {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--line);
+}
+
+.tracking-pill strong,
+.tracking-tip strong {
+  font-size: 0.92rem;
+}
+
+.tracking-pill span,
+.tracking-tip span,
+.trip-note {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.tracking-tips {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.tracking-form {
+  gap: 14px;
+}
+
+.tracking-error {
+  margin: 0;
 }
 
 .map-link {
@@ -585,6 +641,12 @@ textarea {
 
   .layout {
     gap: 12px;
+  }
+
+  .tracking-status__hero,
+  .tracking-grid,
+  .tracking-tips {
+    grid-template-columns: 1fr;
   }
 
   .panel-header {

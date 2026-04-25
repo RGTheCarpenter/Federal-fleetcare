@@ -1,3 +1,39 @@
+const trackingRuntime = {
+  intervalId: null,
+  busy: false,
+};
+
+function getTrackingData() {
+  return window.FLEETCARE_TRACKING || {};
+}
+
+function setTrackingMessage({ mode, lastSavedAt, error } = {}) {
+  const modeNode = document.querySelector("[data-tracking-mode]");
+  const lastSavedNode = document.querySelector("[data-tracking-last-saved]");
+  const errorNode = document.querySelector("[data-tracking-error]");
+  const tracking = getTrackingData();
+
+  if (modeNode) {
+    const nextMode = mode || (tracking.tripActive ? "Trip active" : "Ready");
+    modeNode.textContent = nextMode;
+    modeNode.classList.remove("active", "warning", "danger");
+    modeNode.classList.add(
+      nextMode === "Tracking paused" ? "danger" :
+      tracking.tripActive ? "warning" : "active",
+    );
+  }
+
+  if (lastSavedNode) {
+    lastSavedNode.textContent = lastSavedAt || tracking.lastSavedAt || "No GPS point saved yet";
+  }
+
+  if (errorNode) {
+    const message = error || "";
+    errorNode.hidden = !message;
+    errorNode.textContent = message;
+  }
+}
+
 async function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -89,13 +125,69 @@ function populateGpsFields(form, coords) {
   if (accuracy) accuracy.value = String(coords.accuracy || "");
 }
 
-function getCurrentPosition() {
+async function requestNativeLocationPermission() {
+  const capacitorGeo = window.Capacitor?.Plugins?.Geolocation;
+  if (!capacitorGeo?.requestPermissions) {
+    return null;
+  }
+  try {
+    return await capacitorGeo.requestPermissions();
+  } catch (error) {
+    return null;
+  }
+}
+
+async function getCurrentPosition() {
+  const capacitorGeo = window.Capacitor?.Plugins?.Geolocation;
+  if (capacitorGeo?.getCurrentPosition) {
+    await requestNativeLocationPermission();
+    const position = await capacitorGeo.getCurrentPosition({
+      enableHighAccuracy: true,
+      timeout: 15000,
+      maximumAge: 30000,
+    });
+    return position.coords;
+  }
+
   return new Promise((resolve, reject) => {
     navigator.geolocation.getCurrentPosition(
       (position) => resolve(position.coords),
       reject,
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 },
     );
+  });
+}
+
+async function requestLocationAccess() {
+  if (!navigator.geolocation && !window.Capacitor?.Plugins?.Geolocation) {
+    throw new Error("This device does not support GPS location capture.");
+  }
+  await getCurrentPosition();
+}
+
+function bindLocationAccessButton() {
+  const button = document.querySelector("[data-request-location]");
+  if (!button) {
+    return;
+  }
+
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    const originalText = button.textContent;
+    button.textContent = "Checking access...";
+    try {
+      await requestLocationAccess();
+      setTrackingMessage({ error: "", mode: getTrackingData().tripActive ? "Trip active" : "Ready" });
+      button.textContent = "Location access ready";
+      window.setTimeout(() => {
+        button.disabled = false;
+        button.textContent = originalText;
+      }, 1200);
+    } catch (error) {
+      setTrackingMessage({ error: "Location access is still blocked. Open your browser or app settings and allow precise location." });
+      button.disabled = false;
+      button.textContent = originalText;
+    }
   });
 }
 
@@ -107,63 +199,115 @@ function bindGpsCapture() {
       continue;
     }
 
-    button.addEventListener("click", () => {
-      if (!navigator.geolocation) {
-        window.alert("This device does not support GPS location capture.");
-        return;
-      }
+    const originalText = button.textContent;
 
+    button.addEventListener("click", async () => {
       button.disabled = true;
       button.textContent = "Getting location...";
 
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          populateGpsFields(form, position.coords);
+      try {
+        const coords = await getCurrentPosition();
+        populateGpsFields(form, coords);
+        setTrackingMessage({ error: "" });
+        button.textContent = "Location captured";
+        window.setTimeout(() => {
           button.disabled = false;
-          button.textContent = "Refresh current location";
-        },
-        () => {
-          button.disabled = false;
-          button.textContent = "Use my current location";
-          window.alert("FleetCare could not get your location. Make sure location access is allowed.");
-        },
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 },
-      );
+          button.textContent = originalText;
+        }, 1200);
+      } catch (error) {
+        button.disabled = false;
+        button.textContent = originalText;
+        setTrackingMessage({ error: "FleetCare could not get your location. Make sure location access is allowed." });
+        window.alert("FleetCare could not get your location. Make sure location access is allowed.");
+      }
     });
   }
 }
 
+function getTripLogForm() {
+  const forms = document.querySelectorAll("[data-trip-log-form]");
+  for (const form of forms) {
+    const tripId = form.querySelector("input[name='trip_id']");
+    if (tripId && tripId.value) {
+      return form;
+    }
+  }
+  return null;
+}
+
+async function submitTripCheckpoint(reason) {
+  const gpsForm = getTripLogForm();
+  const tracking = getTrackingData();
+  if (!gpsForm || !tracking.tripActive || trackingRuntime.busy) {
+    return;
+  }
+  if (!navigator.onLine || document.hidden) {
+    setTrackingMessage({ mode: "Tracking paused" });
+    return;
+  }
+
+  trackingRuntime.busy = true;
+  try {
+    const coords = await getCurrentPosition();
+    populateGpsFields(gpsForm, coords);
+    const body = new URLSearchParams(new FormData(gpsForm));
+    await fetch("/gps/add", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body.toString(),
+    });
+    const now = new Date();
+    const savedAt = `${now.toLocaleDateString()} ${now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+    window.FLEETCARE_TRACKING = { ...tracking, lastSavedAt: savedAt };
+    setTrackingMessage({
+      mode: reason === "resume" ? "Trip active" : "Trip active",
+      lastSavedAt: savedAt,
+      error: "",
+    });
+  } catch (error) {
+    setTrackingMessage({ error: "A trip checkpoint could not be saved. FleetCare will try again on the next cycle." });
+  } finally {
+    trackingRuntime.busy = false;
+  }
+}
+
 function bindAutoTripLogging() {
-  const tripInput = document.querySelector("[data-gps-form] input[name='trip_id']");
-  if (!tripInput || !tripInput.value || !navigator.geolocation) {
+  const tracking = getTrackingData();
+  if (!tracking.tripActive) {
+    setTrackingMessage({ mode: "Ready" });
     return;
   }
 
-  const gpsForm = tripInput.form;
-  if (!gpsForm) {
-    return;
-  }
-
-  const submitLog = async () => {
-    if (document.hidden) {
-      return;
+  const startLoop = () => {
+    if (trackingRuntime.intervalId) {
+      window.clearInterval(trackingRuntime.intervalId);
     }
-    try {
-      const coords = await getCurrentPosition();
-      populateGpsFields(gpsForm, coords);
-      const body = new URLSearchParams(new FormData(gpsForm));
-      await fetch("/gps/add", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: body.toString(),
-      });
-    } catch (error) {
-      // Quiet failure for background-like auto logging.
-    }
+    submitTripCheckpoint("start");
+    trackingRuntime.intervalId = window.setInterval(() => submitTripCheckpoint("interval"), 60000);
   };
 
-  submitLog();
-  window.setInterval(submitLog, 60000);
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      setTrackingMessage({ mode: "Tracking paused" });
+      return;
+    }
+    submitTripCheckpoint("resume");
+  });
+
+  const capacitorApp = window.Capacitor?.Plugins?.App;
+  if (capacitorApp?.addListener) {
+    capacitorApp.addListener("appStateChange", ({ isActive }) => {
+      if (isActive) {
+        submitTripCheckpoint("resume");
+      } else {
+        setTrackingMessage({ mode: "Tracking paused" });
+      }
+    });
+  }
+
+  window.addEventListener("focus", () => submitTripCheckpoint("resume"));
+  window.addEventListener("online", () => submitTripCheckpoint("resume"));
+  startLoop();
 }
 
 function renderTripMaps() {
@@ -237,12 +381,17 @@ async function syncLocalReminderNotifications() {
 }
 
 window.addEventListener("online", updateOfflineBanner);
-window.addEventListener("offline", updateOfflineBanner);
+window.addEventListener("offline", () => {
+  updateOfflineBanner();
+  setTrackingMessage({ mode: getTrackingData().tripActive ? "Tracking paused" : "Ready" });
+});
 
 window.addEventListener("DOMContentLoaded", async () => {
   updateOfflineBanner();
+  setTrackingMessage();
   await bindEncodedUploads();
   bindShareButton();
+  bindLocationAccessButton();
   bindGpsCapture();
   bindAutoTripLogging();
   renderTripMaps();

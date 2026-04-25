@@ -6,6 +6,7 @@
 - Android icon branding: updated adaptive launcher icon
 - Native offline fallback screen
 - Native share support
+- Native geolocation permission support
 - Local reminder notifications support
 - Gradle release signing config reads `android/keystore.properties`
 
@@ -81,4 +82,5 @@ The `.aab` file will be created under:
 
 - Full remote push notifications still need Firebase / FCM and a real `google-services.json`
 - The app already includes local on-device reminder notifications
-- Test the offline screen, sharing, and photo uploads on a real Android phone before submitting to Play
+- Test the offline screen, sharing, location capture, and photo uploads on a real Android phone before submitting to Play
+- If you later enable true continuous background location, complete the Google Play location and foreground-service disclosures before moving beyond internal testing
