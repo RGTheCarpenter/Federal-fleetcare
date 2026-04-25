@@ -667,56 +667,63 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 """,
                 (user["id"],),
             ).fetchall()
-            gps_logs = connection.execute(
-                """
-                SELECT g.*, v.name AS vehicle_name, v.plate
-                FROM gps_logs g
-                JOIN vehicles v ON v.id = g.vehicle_id
-                WHERE g.user_id = ?
-                ORDER BY g.created_at DESC
-                LIMIT 12
-                """,
-                (user["id"],),
-            ).fetchall()
-            active_trip = connection.execute(
-                """
-                SELECT t.*, v.name AS vehicle_name, v.plate
-                FROM trips t
-                JOIN vehicles v ON v.id = t.vehicle_id
-                WHERE t.user_id = ? AND t.status = 'Active'
-                ORDER BY t.started_at DESC
-                LIMIT 1
-                """,
-                (user["id"],),
-            ).fetchone()
-            trips = connection.execute(
-                """
-                SELECT
-                    t.*,
-                    v.name AS vehicle_name,
-                    v.plate,
-                    (
-                        SELECT COUNT(*)
-                        FROM gps_logs g
-                        WHERE g.trip_id = t.id
-                    ) AS point_count
-                FROM trips t
-                JOIN vehicles v ON v.id = t.vehicle_id
-                WHERE t.user_id = ?
-                ORDER BY t.started_at DESC
-                LIMIT 8
-                """,
-                (user["id"],),
-            ).fetchall()
-            trip_points = connection.execute(
-                """
-                SELECT trip_id, latitude, longitude, created_at
-                FROM gps_logs
-                WHERE user_id = ? AND trip_id IS NOT NULL
-                ORDER BY trip_id, created_at
-                """,
-                (user["id"],),
-            ).fetchall()
+            gps_logs = []
+            active_trip = None
+            trips = []
+            trip_points = []
+            try:
+                gps_logs = connection.execute(
+                    """
+                    SELECT g.*, v.name AS vehicle_name, v.plate
+                    FROM gps_logs g
+                    JOIN vehicles v ON v.id = g.vehicle_id
+                    WHERE g.user_id = ?
+                    ORDER BY g.created_at DESC
+                    LIMIT 12
+                    """,
+                    (user["id"],),
+                ).fetchall()
+                active_trip = connection.execute(
+                    """
+                    SELECT t.*, v.name AS vehicle_name, v.plate
+                    FROM trips t
+                    JOIN vehicles v ON v.id = t.vehicle_id
+                    WHERE t.user_id = ? AND t.status = 'Active'
+                    ORDER BY t.started_at DESC
+                    LIMIT 1
+                    """,
+                    (user["id"],),
+                ).fetchone()
+                trips = connection.execute(
+                    """
+                    SELECT
+                        t.*,
+                        v.name AS vehicle_name,
+                        v.plate,
+                        (
+                            SELECT COUNT(*)
+                            FROM gps_logs g
+                            WHERE g.trip_id = t.id
+                        ) AS point_count
+                    FROM trips t
+                    JOIN vehicles v ON v.id = t.vehicle_id
+                    WHERE t.user_id = ?
+                    ORDER BY t.started_at DESC
+                    LIMIT 8
+                    """,
+                    (user["id"],),
+                ).fetchall()
+                trip_points = connection.execute(
+                    """
+                    SELECT trip_id, latitude, longitude, created_at
+                    FROM gps_logs
+                    WHERE user_id = ? AND trip_id IS NOT NULL
+                    ORDER BY trip_id, created_at
+                    """,
+                    (user["id"],),
+                ).fetchall()
+            except Exception as error:
+                print(f"GPS dashboard data skipped: {error}")
 
         alerts = collect_alerts(reminders, assignments)
         stats = build_stats(vehicles, maintenance, fuel_logs, reminders)
