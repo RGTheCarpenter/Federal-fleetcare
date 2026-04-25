@@ -581,156 +581,157 @@ class FleetCareHandler(BaseHTTPRequestHandler):
             return
         active_tab = get_active_tab(route)
 
-        with get_connection() as connection:
-            vehicles = connection.execute(
-                """
-                SELECT
-                    v.*,
-                    (
-                        SELECT g.latitude
-                        FROM gps_logs g
-                        WHERE g.vehicle_id = v.id AND g.user_id = v.user_id
-                        ORDER BY g.created_at DESC
-                        LIMIT 1
-                    ) AS last_latitude,
-                    (
-                        SELECT g.longitude
-                        FROM gps_logs g
-                        WHERE g.vehicle_id = v.id AND g.user_id = v.user_id
-                        ORDER BY g.created_at DESC
-                        LIMIT 1
-                    ) AS last_longitude,
-                    (
-                        SELECT g.accuracy_meters
-                        FROM gps_logs g
-                        WHERE g.vehicle_id = v.id AND g.user_id = v.user_id
-                        ORDER BY g.created_at DESC
-                        LIMIT 1
-                    ) AS last_accuracy_meters,
-                    (
-                        SELECT g.created_at
-                        FROM gps_logs g
-                        WHERE g.vehicle_id = v.id AND g.user_id = v.user_id
-                        ORDER BY g.created_at DESC
-                        LIMIT 1
-                    ) AS last_location_at
-                FROM vehicles v
-                WHERE v.user_id = ?
-                ORDER BY v.created_at DESC
-                """,
-                (user["id"],),
-            ).fetchall()
-            drivers = connection.execute(
-                "SELECT * FROM drivers WHERE user_id = ? ORDER BY created_at DESC",
-                (user["id"],),
-            ).fetchall()
-            assignments = connection.execute(
-                """
-                SELECT a.*, v.name AS vehicle_name, v.plate, d.name AS driver_name
-                FROM assignments a
-                JOIN vehicles v ON v.id = a.vehicle_id
-                JOIN drivers d ON d.id = a.driver_id
-                WHERE a.user_id = ?
-                ORDER BY a.active DESC, a.start_date DESC
-                """,
-                (user["id"],),
-            ).fetchall()
-            maintenance = connection.execute(
-                """
-                SELECT m.*, v.name AS vehicle_name, v.plate
-                FROM maintenance_logs m
-                JOIN vehicles v ON v.id = m.vehicle_id
-                WHERE m.user_id = ?
-                ORDER BY m.service_date DESC
-                LIMIT 8
-                """,
-                (user["id"],),
-            ).fetchall()
-            fuel_logs = connection.execute(
-                """
-                SELECT f.*, v.name AS vehicle_name, v.plate
-                FROM fuel_logs f
-                JOIN vehicles v ON v.id = f.vehicle_id
-                WHERE f.user_id = ?
-                ORDER BY f.fill_date DESC
-                LIMIT 8
-                """,
-                (user["id"],),
-            ).fetchall()
-            reminders = connection.execute(
-                """
-                SELECT r.*, v.name AS vehicle_name, v.plate, v.odometer AS vehicle_odometer
-                FROM reminders r
-                JOIN vehicles v ON v.id = r.vehicle_id
-                WHERE r.user_id = ? AND r.status = 'Open'
-                ORDER BY COALESCE(r.due_date, '9999-12-31'), COALESCE(r.due_odometer, 999999999)
-                """,
-                (user["id"],),
-            ).fetchall()
-            gps_logs = []
-            active_trip = None
-            trips = []
-            trip_points = []
-            try:
-                gps_logs = connection.execute(
+        try:
+            with get_connection() as connection:
+                vehicles = connection.execute(
                     """
-                    SELECT g.*, v.name AS vehicle_name, v.plate
-                    FROM gps_logs g
-                    JOIN vehicles v ON v.id = g.vehicle_id
-                    WHERE g.user_id = ?
-                    ORDER BY g.created_at DESC
-                    LIMIT 12
+                    SELECT
+                        v.*,
+                        (
+                            SELECT g.latitude
+                            FROM gps_logs g
+                            WHERE g.vehicle_id = v.id AND g.user_id = v.user_id
+                            ORDER BY g.created_at DESC
+                            LIMIT 1
+                        ) AS last_latitude,
+                        (
+                            SELECT g.longitude
+                            FROM gps_logs g
+                            WHERE g.vehicle_id = v.id AND g.user_id = v.user_id
+                            ORDER BY g.created_at DESC
+                            LIMIT 1
+                        ) AS last_longitude,
+                        (
+                            SELECT g.accuracy_meters
+                            FROM gps_logs g
+                            WHERE g.vehicle_id = v.id AND g.user_id = v.user_id
+                            ORDER BY g.created_at DESC
+                            LIMIT 1
+                        ) AS last_accuracy_meters,
+                        (
+                            SELECT g.created_at
+                            FROM gps_logs g
+                            WHERE g.vehicle_id = v.id AND g.user_id = v.user_id
+                            ORDER BY g.created_at DESC
+                            LIMIT 1
+                        ) AS last_location_at
+                    FROM vehicles v
+                    WHERE v.user_id = ?
+                    ORDER BY v.created_at DESC
                     """,
                     (user["id"],),
                 ).fetchall()
-                active_trip = connection.execute(
+                drivers = connection.execute(
+                    "SELECT * FROM drivers WHERE user_id = ? ORDER BY created_at DESC",
+                    (user["id"],),
+                ).fetchall()
+                assignments = connection.execute(
                     """
-                    SELECT t.*, v.name AS vehicle_name, v.plate
-                    FROM trips t
-                    JOIN vehicles v ON v.id = t.vehicle_id
-                    WHERE t.user_id = ? AND t.status = 'Active'
-                    ORDER BY t.started_at DESC
-                    LIMIT 1
+                    SELECT a.*, v.name AS vehicle_name, v.plate, d.name AS driver_name
+                    FROM assignments a
+                    JOIN vehicles v ON v.id = a.vehicle_id
+                    JOIN drivers d ON d.id = a.driver_id
+                    WHERE a.user_id = ?
+                    ORDER BY a.active DESC, a.start_date DESC
                     """,
                     (user["id"],),
-                ).fetchone()
-                trips = connection.execute(
+                ).fetchall()
+                maintenance = connection.execute(
                     """
-                    SELECT
-                        t.*,
-                        v.name AS vehicle_name,
-                        v.plate,
-                        (
-                            SELECT COUNT(*)
-                            FROM gps_logs g
-                            WHERE g.trip_id = t.id
-                        ) AS point_count
-                    FROM trips t
-                    JOIN vehicles v ON v.id = t.vehicle_id
-                    WHERE t.user_id = ?
-                    ORDER BY t.started_at DESC
+                    SELECT m.*, v.name AS vehicle_name, v.plate
+                    FROM maintenance_logs m
+                    JOIN vehicles v ON v.id = m.vehicle_id
+                    WHERE m.user_id = ?
+                    ORDER BY m.service_date DESC
                     LIMIT 8
                     """,
                     (user["id"],),
                 ).fetchall()
-                trip_points = connection.execute(
+                fuel_logs = connection.execute(
                     """
-                    SELECT trip_id, latitude, longitude, created_at
-                    FROM gps_logs
-                    WHERE user_id = ? AND trip_id IS NOT NULL
-                    ORDER BY trip_id, created_at
+                    SELECT f.*, v.name AS vehicle_name, v.plate
+                    FROM fuel_logs f
+                    JOIN vehicles v ON v.id = f.vehicle_id
+                    WHERE f.user_id = ?
+                    ORDER BY f.fill_date DESC
+                    LIMIT 8
                     """,
                     (user["id"],),
                 ).fetchall()
-            except Exception as error:
-                print(f"GPS dashboard data skipped: {error}")
+                reminders = connection.execute(
+                    """
+                    SELECT r.*, v.name AS vehicle_name, v.plate, v.odometer AS vehicle_odometer
+                    FROM reminders r
+                    JOIN vehicles v ON v.id = r.vehicle_id
+                    WHERE r.user_id = ? AND r.status = 'Open'
+                    ORDER BY COALESCE(r.due_date, '9999-12-31'), COALESCE(r.due_odometer, 999999999)
+                    """,
+                    (user["id"],),
+                ).fetchall()
+                gps_logs = []
+                active_trip = None
+                trips = []
+                trip_points = []
+                try:
+                    gps_logs = connection.execute(
+                        """
+                        SELECT g.*, v.name AS vehicle_name, v.plate
+                        FROM gps_logs g
+                        JOIN vehicles v ON v.id = g.vehicle_id
+                        WHERE g.user_id = ?
+                        ORDER BY g.created_at DESC
+                        LIMIT 12
+                        """,
+                        (user["id"],),
+                    ).fetchall()
+                    active_trip = connection.execute(
+                        """
+                        SELECT t.*, v.name AS vehicle_name, v.plate
+                        FROM trips t
+                        JOIN vehicles v ON v.id = t.vehicle_id
+                        WHERE t.user_id = ? AND t.status = 'Active'
+                        ORDER BY t.started_at DESC
+                        LIMIT 1
+                        """,
+                        (user["id"],),
+                    ).fetchone()
+                    trips = connection.execute(
+                        """
+                        SELECT
+                            t.*,
+                            v.name AS vehicle_name,
+                            v.plate,
+                            (
+                                SELECT COUNT(*)
+                                FROM gps_logs g
+                                WHERE g.trip_id = t.id
+                            ) AS point_count
+                        FROM trips t
+                        JOIN vehicles v ON v.id = t.vehicle_id
+                        WHERE t.user_id = ?
+                        ORDER BY t.started_at DESC
+                        LIMIT 8
+                        """,
+                        (user["id"],),
+                    ).fetchall()
+                    trip_points = connection.execute(
+                        """
+                        SELECT trip_id, latitude, longitude, created_at
+                        FROM gps_logs
+                        WHERE user_id = ? AND trip_id IS NOT NULL
+                        ORDER BY trip_id, created_at
+                        """,
+                        (user["id"],),
+                    ).fetchall()
+                except Exception as error:
+                    print(f"GPS dashboard data skipped: {error}")
 
-        alerts = collect_alerts(reminders, assignments)
-        stats = build_stats(vehicles, maintenance, fuel_logs, reminders)
-        mobile_reminders = json.dumps(build_mobile_reminders(reminders), separators=(",", ":"))
-        trip_routes = json.dumps(build_trip_routes(trip_points), separators=(",", ":"))
+            alerts = collect_alerts(reminders, assignments)
+            stats = build_stats(vehicles, maintenance, fuel_logs, reminders)
+            mobile_reminders = json.dumps(build_mobile_reminders(reminders), separators=(",", ":"))
+            trip_routes = json.dumps(build_trip_routes(trip_points), separators=(",", ":"))
 
-        content = f"""
+            content = f"""
         <div class="page-shell">
           <div class="offline-banner" data-offline-banner hidden>
             Connection lost. FleetCare will retry automatically when your phone is back online.
@@ -919,7 +920,24 @@ class FleetCareHandler(BaseHTTPRequestHandler):
         </div>
         <script>window.FLEETCARE_REMINDERS = {mobile_reminders}; window.FLEETCARE_TRIP_ROUTES = {trip_routes};</script>
         """
-        return self.send_html(page("FleetCare Dashboard", content))
+            return self.send_html(page("FleetCare Dashboard", content))
+        except Exception as error:
+            print(f"Dashboard render failed: {error}")
+            fallback = f"""
+            <section class="auth-shell">
+              <div class="auth-card">
+                <p class="kicker">FleetCare</p>
+                <h1>Dashboard recovering</h1>
+                <p class="muted">A dashboard module failed to load after sign-in. The app is still running, and this page is here so you are not blocked by a 502 error.</p>
+                <div class="flash error">Dashboard error: {h(error)}</div>
+                <div class="hero-actions">
+                  <a class="ghost-btn" href="/dashboard">Try dashboard again</a>
+                  <a class="ghost-btn" href="/logout">Sign out</a>
+                </div>
+              </div>
+            </section>
+            """
+            return self.send_html(page("FleetCare Dashboard Recovery", fallback), status=200)
 
     def render_pdf_report(self, route):
         user = self.require_user()
@@ -1021,9 +1039,9 @@ class FleetCareHandler(BaseHTTPRequestHandler):
         self.send_header("Location", location)
         self.end_headers()
 
-    def send_html(self, payload):
+    def send_html(self, payload, status=200):
         data = payload.encode("utf-8")
-        self.send_response(200)
+        self.send_response(status)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
