@@ -91,7 +91,7 @@ function bindShareButton() {
 
   button.addEventListener("click", async () => {
     const payload = {
-      title: button.dataset.shareTitle || "FleetCare",
+      title: button.dataset.shareTitle || "RG Fleet",
       text: button.dataset.shareText || "",
       url: button.dataset.shareUrl || window.location.origin,
     };
@@ -110,7 +110,7 @@ function bindShareButton() {
       window.alert("The app link has been copied.");
     } catch (error) {
       if (payload.url) {
-        window.prompt("Copy this FleetCare link:", payload.url);
+        window.prompt("Copy this RG Fleet link:", payload.url);
       }
     }
   });
@@ -217,8 +217,8 @@ function bindGpsCapture() {
       } catch (error) {
         button.disabled = false;
         button.textContent = originalText;
-        setTrackingMessage({ error: "FleetCare could not get your location. Make sure location access is allowed." });
-        window.alert("FleetCare could not get your location. Make sure location access is allowed.");
+        setTrackingMessage({ error: "RG Fleet could not get your location. Make sure location access is allowed." });
+        window.alert("RG Fleet could not get your location. Make sure location access is allowed.");
       }
     });
   }
@@ -265,7 +265,7 @@ async function submitTripCheckpoint(reason) {
       error: "",
     });
   } catch (error) {
-    setTrackingMessage({ error: "A trip checkpoint could not be saved. FleetCare will try again on the next cycle." });
+    setTrackingMessage({ error: "A trip checkpoint could not be saved. RG Fleet will try again on the next cycle." });
   } finally {
     trackingRuntime.busy = false;
   }

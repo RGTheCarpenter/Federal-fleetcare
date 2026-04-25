@@ -1,4 +1,4 @@
-const CACHE_NAME = "fleetcare-v1";
+const CACHE_NAME = "rg-fleet-v2";
 const STATIC_ASSETS = [
   "/static/styles.css",
   "/static/manifest.webmanifest",
