@@ -88,7 +88,7 @@ def init_db():
     with get_connection() as connection:
         for statement in schema_statements(connection.engine):
             connection.execute(statement)
-        for statement in migration_statements():
+        for statement in migration_statements(connection.engine):
             connection.execute(statement)
 
 
@@ -236,30 +236,35 @@ def schema_statements(engine):
     ]
 
 
-def migration_statements():
+def migration_statements(engine):
+    trip_id_column = "BIGSERIAL PRIMARY KEY" if engine == "postgres" else "INTEGER PRIMARY KEY AUTOINCREMENT"
+    integer_fk = "BIGINT" if engine == "postgres" else "INTEGER"
+    real_type = "DOUBLE PRECISION" if engine == "postgres" else "REAL"
+    timestamp_type = "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"
+
     return [
         "ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS photo_name TEXT",
         "ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS photo_data TEXT",
         "ALTER TABLE maintenance_logs ADD COLUMN IF NOT EXISTS attachment_name TEXT",
         "ALTER TABLE maintenance_logs ADD COLUMN IF NOT EXISTS attachment_data TEXT",
-        """
+        f"""
         CREATE TABLE IF NOT EXISTS trips (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            vehicle_id INTEGER NOT NULL,
+            id {trip_id_column},
+            user_id {integer_fk} NOT NULL,
+            vehicle_id {integer_fk} NOT NULL,
             label TEXT,
-            start_latitude REAL,
-            start_longitude REAL,
-            end_latitude REAL,
-            end_longitude REAL,
+            start_latitude {real_type},
+            start_longitude {real_type},
+            end_latitude {real_type},
+            end_longitude {real_type},
             status TEXT NOT NULL DEFAULT 'Active',
-            started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            started_at {timestamp_type},
             ended_at TIMESTAMP,
             FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
             FOREIGN KEY(vehicle_id) REFERENCES vehicles(id) ON DELETE CASCADE
         )
         """,
-        "ALTER TABLE gps_logs ADD COLUMN IF NOT EXISTS trip_id INTEGER",
+        f"ALTER TABLE gps_logs ADD COLUMN IF NOT EXISTS trip_id {integer_fk}",
     ]
 
 
