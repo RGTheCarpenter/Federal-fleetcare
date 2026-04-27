@@ -286,6 +286,81 @@ a {
   padding: 22px;
 }
 
+.collapsible-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+}
+
+.collapsible-panel__body {
+  display: grid;
+  gap: 12px;
+  order: 1;
+}
+
+.collapsible-panel:not([open]) .collapsible-panel__body {
+  display: none;
+}
+
+.collapsible-panel .panel-header {
+  margin-bottom: 0;
+}
+
+.panel-dropdown {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.82);
+  cursor: pointer;
+  list-style: none;
+  color: var(--accent-strong);
+  font-weight: 700;
+  order: 2;
+}
+
+.panel-dropdown::-webkit-details-marker {
+  display: none;
+}
+
+.panel-dropdown::after {
+  content: "▾";
+  font-weight: 600;
+  color: var(--muted);
+  transition: transform 180ms ease;
+}
+
+.collapsible-panel[open] .panel-dropdown::after {
+  transform: rotate(180deg);
+}
+
+.panel-dropdown__label,
+.panel-dropdown__meta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.panel-dropdown__meta,
+.panel-dropdown__hint {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.collapsible-panel[open] .panel-dropdown__hint::after {
+  content: "Hide";
+}
+
+.panel-dropdown__hint::after {
+  content: "Open";
+}
+
 .panel-header {
   display: flex;
   justify-content: space-between;
@@ -466,7 +541,7 @@ textarea {
 .tracking-status,
 .trip-card {
   border-radius: 18px;
-  padding: 12px;
+  padding: 10px;
   background: var(--panel);
   border: 1px solid rgba(24, 33, 28, 0.08);
 }
@@ -474,7 +549,7 @@ textarea {
 .tracking-status {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .tracking-status__hero,
@@ -486,7 +561,7 @@ textarea {
 
 .tracking-status__body {
   display: grid;
-  gap: 12px;
+  gap: 10px;
   order: 1;
 }
 
@@ -498,10 +573,10 @@ textarea {
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) auto;
   align-items: center;
-  gap: 12px;
-  min-height: 40px;
-  padding: 10px 14px;
-  border-radius: 14px;
+  gap: 10px;
+  min-height: 36px;
+  padding: 8px 12px;
+  border-radius: 12px;
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.82);
   cursor: pointer;
@@ -543,7 +618,7 @@ textarea {
 
 .tracking-dropdown__meta {
   color: var(--muted);
-  font-size: 0.92rem;
+  font-size: 0.85rem;
 }
 
 .tracking-dropdown__meta span,
@@ -575,7 +650,7 @@ textarea {
 .tracking-tip {
   display: grid;
   gap: 6px;
-  padding: 12px;
+  padding: 10px;
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.72);
   border: 1px solid var(--line);
@@ -819,7 +894,15 @@ textarea {
     grid-template-columns: 1fr;
   }
 
+  .panel-dropdown {
+    grid-template-columns: 1fr;
+  }
+
   .tracking-dropdown__hint {
+    display: none;
+  }
+
+  .panel-dropdown__hint {
     display: none;
   }
 

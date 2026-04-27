@@ -951,9 +951,14 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 for view_name, label in allowed_vehicle_views_for_user(user)
             )
             vehicle_add_panel = (
-                """
-            <section class="{classes}" id="vehicles" data-tab-section="vehicles" {hidden}>
-              <div class="panel-header"><div><p class="section-kicker">Fleet</p><h2>Add vehicle</h2></div></div>
+                render_collapsible_panel(
+                    tab_panel_classes("vehicles", active_tab, "panel"),
+                    "vehicles",
+                    "vehicles",
+                    active_tab != "vehicles" or active_vehicle_view != "add",
+                    "Fleet",
+                    "Add vehicle",
+                    """
               <form method="post" action="/vehicles/add" class="form-grid">
                 <label><span>Name</span><input type="text" name="name" required></label>
                 <label><span>Plate</span><input type="text" name="plate" required></label>
@@ -971,19 +976,23 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 {upload}
                 <button type="submit" class="primary-btn">Save vehicle</button>
               </form>
-            </section>
-                """.format(
-                    classes=tab_panel_classes("vehicles", active_tab, "panel"),
-                    hidden='"hidden"' if active_tab != "vehicles" or active_vehicle_view != "add" else "",
-                    upload=render_upload_field("Vehicle photo", "vehicle-photo-new", "photo_name", "photo_data", "image/*", capture=True),
+                    """.format(
+                        upload=render_upload_field("Vehicle photo", "vehicle-photo-new", "photo_name", "photo_data", "image/*", capture=True),
+                    ),
+                    summary_meta="Create and save a fleet vehicle",
                 )
                 if owner_mode
                 else ""
             )
             drivers_panel = (
-                f"""
-            <section class="{tab_panel_classes('drivers', active_tab, 'panel')}" id="drivers" data-tab-section="drivers" {"hidden" if active_tab != "drivers" else ""}>
-              <div class="panel-header"><div><p class="section-kicker">Drivers</p><h2>Add driver</h2></div></div>
+                render_collapsible_panel(
+                    tab_panel_classes("drivers", active_tab, "panel"),
+                    "drivers",
+                    "drivers",
+                    active_tab != "drivers",
+                    "Drivers",
+                    "Add driver",
+                    """
               <form method="post" action="/drivers/add" class="form-grid">
                 <label><span>Name</span><input type="text" name="name" required></label>
                 <label><span>License number</span><input type="text" name="license_number"></label>
@@ -1001,32 +1010,31 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 <label><span>Temporary password</span><input type="text" name="temporary_password"></label>
                 <button type="submit" class="primary-btn">Save driver</button>
               </form>
-            </section>
-                """
+                    """,
+                    summary_meta="Create a driver profile and login",
+                )
                 if owner_mode
                 else ""
             )
             assignments_panel = (
-                f"""
-            <section class="{tab_panel_classes('assignments', active_tab, 'panel')}" id="assignments" data-tab-section="assignments" {"hidden" if active_tab != "assignments" else ""}>
-              <div class="panel-header"><div><p class="section-kicker">Assignments</p><h2>Assign vehicle</h2></div></div>
-              {render_assignment_form(vehicles, drivers)}
-            </section>
-                """
+                render_collapsible_panel(
+                    tab_panel_classes("assignments", active_tab, "panel"),
+                    "assignments",
+                    "assignments",
+                    active_tab != "assignments",
+                    "Assignments",
+                    "Assign vehicle",
+                    render_assignment_form(vehicles, drivers),
+                    summary_meta="Match a driver to a vehicle",
+                )
                 if owner_mode
                 else ""
             )
             alerts_form_panel = (
                 f"""
-            <section class="{tab_panel_classes('alerts', active_tab, 'panel')}" id="reminders" data-tab-section="alerts" {"hidden" if active_tab != "alerts" else ""}>
-              <div class="panel-header"><div><p class="section-kicker">Reminders</p><h2>Create alert reminder</h2></div></div>
-              {render_reminder_form(vehicles)}
-            </section>
+            {render_collapsible_panel(tab_panel_classes('alerts', active_tab, 'panel'), 'reminders', 'alerts', active_tab != 'alerts', 'Reminders', 'Create alert reminder', render_reminder_form(vehicles), summary_meta='Set mileage or date reminders')}
 
-            <section class="{tab_panel_classes('alerts', active_tab, 'panel')}" id="notification-settings" data-tab-section="alerts" {"hidden" if active_tab != "alerts" else ""}>
-              <div class="panel-header"><div><p class="section-kicker">Notifications</p><h2>Owner alerts</h2></div></div>
-              {render_notification_settings(user)}
-            </section>
+            {render_collapsible_panel(tab_panel_classes('alerts', active_tab, 'panel'), 'notification-settings', 'alerts', active_tab != 'alerts', 'Notifications', 'Owner alerts', render_notification_settings(user), summary_meta='Update email and text notifications')}
                 """
                 if owner_mode
                 else ""
@@ -1143,28 +1151,16 @@ class FleetCareHandler(BaseHTTPRequestHandler):
 
             {vehicle_add_panel}
 
-            <section class="{tab_panel_classes('vehicles', active_tab, 'panel')}" id="gps" data-tab-section="vehicles" {"hidden" if active_tab != "vehicles" or active_vehicle_view != "capture" else ""}>
-              <div class="panel-header"><div><p class="section-kicker">GPS</p><h2>Capture a location</h2></div></div>
-              {render_gps_form(vehicles, active_trip)}
-            </section>
+            {render_collapsible_panel(tab_panel_classes('vehicles', active_tab, 'panel'), 'gps', 'vehicles', active_tab != 'vehicles' or active_vehicle_view != 'capture', 'GPS', 'Capture a location', render_gps_form(vehicles, active_trip), summary_meta='Save a single location checkpoint')}
 
-            <section class="{tab_panel_classes('vehicles', active_tab, 'panel')}" id="trip-control" data-tab-section="vehicles" {"hidden" if active_tab != "vehicles" or active_vehicle_view != "trips" else ""}>
-              <div class="panel-header"><div><p class="section-kicker">Trips</p><h2>Trip tracking</h2></div></div>
-              {render_trip_controls(vehicles, active_trip)}
-            </section>
+            {render_collapsible_panel(tab_panel_classes('vehicles', active_tab, 'panel'), 'trip-control', 'vehicles', active_tab != 'vehicles' or active_vehicle_view != 'trips', 'Trips', 'Trip tracking', render_trip_controls(vehicles, active_trip), summary_meta='Start or stop route logging')}
 
             {drivers_panel}
             {assignments_panel}
 
-            <section class="{tab_panel_classes('maintenance', active_tab, 'panel')}" id="maintenance" data-tab-section="maintenance" {"hidden" if active_tab != "maintenance" else ""}>
-              <div class="panel-header"><div><p class="section-kicker">Maintenance</p><h2>Log service</h2></div></div>
-              {render_maintenance_form(vehicles)}
-            </section>
+            {render_collapsible_panel(tab_panel_classes('maintenance', active_tab, 'panel'), 'maintenance', 'maintenance', active_tab != 'maintenance', 'Maintenance', 'Log service', render_maintenance_form(vehicles), summary_meta='Add maintenance work and costs')}
 
-            <section class="{tab_panel_classes('fuel', active_tab, 'panel')}" id="fuel" data-tab-section="fuel" {"hidden" if active_tab != "fuel" else ""}>
-              <div class="panel-header"><div><p class="section-kicker">Fuel</p><h2>Log fuel fill</h2></div></div>
-              {render_fuel_form(vehicles)}
-            </section>
+            {render_collapsible_panel(tab_panel_classes('fuel', active_tab, 'panel'), 'fuel', 'fuel', active_tab != 'fuel', 'Fuel', 'Log fuel fill', render_fuel_form(vehicles), summary_meta='Add fuel quantity and spend')}
 
             {alerts_form_panel}
 
@@ -1393,6 +1389,24 @@ def render_subtab_link(tab_name, view_name, label, active_view):
 def tab_panel_classes(tab_name, active_tab, base_classes):
     active_class = " is-active" if tab_name == active_tab else ""
     return f"{base_classes} tab-panel{active_class}"
+
+
+def render_collapsible_panel(classes, panel_id, tab_name, hidden, kicker, title, body, summary_meta=""):
+    hidden_attr = " hidden" if hidden else ""
+    meta_html = f'<span class="panel-dropdown__meta">{h(summary_meta)}</span>' if summary_meta else ""
+    return f"""
+    <details class="{classes} collapsible-panel" id="{panel_id}" data-tab-section="{tab_name}"{hidden_attr}>
+      <div class="collapsible-panel__body">
+        <div class="panel-header"><div><p class="section-kicker">{h(kicker)}</p><h2>{h(title)}</h2></div></div>
+        {body}
+      </div>
+      <summary class="panel-dropdown">
+        <span class="panel-dropdown__label">{h(title)}</span>
+        {meta_html}
+        <span class="panel-dropdown__hint"></span>
+      </summary>
+    </details>
+    """
 
 
 def render_brand_lockup(compact=False):
