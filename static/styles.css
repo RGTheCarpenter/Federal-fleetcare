@@ -466,7 +466,7 @@ textarea {
 .tracking-status,
 .trip-card {
   border-radius: 18px;
-  padding: 16px;
+  padding: 12px;
   background: var(--panel);
   border: 1px solid rgba(24, 33, 28, 0.08);
 }
@@ -474,7 +474,7 @@ textarea {
 .tracking-status {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 10px;
 }
 
 .tracking-status__hero,
@@ -486,7 +486,7 @@ textarea {
 
 .tracking-status__body {
   display: grid;
-  gap: 16px;
+  gap: 12px;
   order: 1;
 }
 
@@ -495,13 +495,13 @@ textarea {
 }
 
 .tracking-status summary.tracking-dropdown {
-  display: inline-flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  min-height: 44px;
-  padding: 10px 16px;
-  border-radius: 999px;
+  gap: 12px;
+  min-height: 40px;
+  padding: 10px 14px;
+  border-radius: 14px;
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.82);
   cursor: pointer;
@@ -530,6 +530,29 @@ textarea {
   content: "Hide";
 }
 
+.tracking-dropdown__label,
+.tracking-dropdown__meta {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.tracking-dropdown__label span:first-child {
+  font-weight: 700;
+}
+
+.tracking-dropdown__meta {
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.tracking-dropdown__meta span,
+.tracking-dropdown__label span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .tracking-dropdown__hint {
   color: var(--muted);
   font-weight: 600;
@@ -552,7 +575,7 @@ textarea {
 .tracking-tip {
   display: grid;
   gap: 6px;
-  padding: 14px;
+  padding: 12px;
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.72);
   border: 1px solid var(--line);
@@ -790,6 +813,14 @@ textarea {
   .tracking-grid,
   .tracking-tips {
     grid-template-columns: 1fr;
+  }
+
+  .tracking-status summary.tracking-dropdown {
+    grid-template-columns: 1fr;
+  }
+
+  .tracking-dropdown__hint {
+    display: none;
   }
 
   .panel-header {

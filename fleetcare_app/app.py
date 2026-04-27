@@ -1741,7 +1741,14 @@ def render_tracking_status(active_trip, gps_logs):
         </div>
       </div>
       <summary class="tracking-dropdown">
-        <span>Tracking status</span>
+        <span class="tracking-dropdown__label">
+          <span>Tracking status</span>
+          <span class="badge {active_tone} tracking-summary-badge">{active_label}</span>
+        </span>
+        <span class="tracking-dropdown__meta">
+          <span>{vehicle_name}{f" - {plate}" if plate else ""}</span>
+          <span data-tracking-last-saved>{last_saved}</span>
+        </span>
         <span class="tracking-dropdown__hint"></span>
       </summary>
     </details>
