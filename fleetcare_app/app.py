@@ -24,6 +24,7 @@ APP_PUBLIC_URL = os.environ.get("APP_PUBLIC_URL", "https://fleetcare-web.onrende
 APP_BRAND = "RG Fleet"
 APP_SHORT_NAME = "RG Fleet"
 APP_TAGLINE = "Company fleet command"
+LITERS_PER_GALLON = 3.78541
 
 
 def run():
@@ -470,7 +471,8 @@ class FleetCareHandler(BaseHTTPRequestHandler):
     def handle_fuel_add(self, user, form):
         vehicle_id = int(form.get("vehicle_id") or 0)
         odometer = int(form.get("odometer") or 0)
-        liters = float(form.get("liters") or 0)
+        gallons = float(form.get("gallons") or 0)
+        liters = gallons_to_liters(gallons)
         total_cost = float(form.get("total_cost") or 0)
         price_per_liter = total_cost / liters if liters else 0
         full_tank = 1 if form.get("full_tank") == "on" else 0
@@ -918,7 +920,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
             {render_stat("Open alerts", len(alerts))}
             {render_stat("Fuel spend", money(stats["fuel_spend"]))}
             {render_stat("Maintenance spend", money(stats["maintenance_spend"]))}
-            {render_stat("Avg fuel price", money(stats["avg_fuel_price"]))}
+            {render_stat("Avg fuel price / gal", money(stats["avg_fuel_price"]))}
           </section>
                 """
                 if owner_mode
@@ -1268,7 +1270,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
         lines.append("Recent fuel logs")
         for item in fuel_logs:
             lines.append(
-                f"{item['fill_date']} | {item['vehicle_name']} | {item['odometer']} km | {item['liters']} L | {money(item['total_cost'])}"
+                f"{item['fill_date']} | {item['vehicle_name']} | {item['odometer']} km | {format_gallons(item['liters'])} gal | {money(item['total_cost'])}"
             )
 
         pdf_bytes = build_simple_pdf(f"{user['company_name']} Fleet Report", lines)
@@ -1612,7 +1614,7 @@ def render_fuel_form(vehicles):
       <label><span>Vehicle</span><select name="vehicle_id" required>{render_vehicle_options(vehicles)}</select></label>
       <label><span>Fill date</span><input type="date" name="fill_date" value="{date.today().isoformat()}" required></label>
       <label><span>Odometer</span><input type="number" name="odometer" min="0" required></label>
-      <label><span>Liters</span><input type="number" name="liters" min="0" step="0.01" required></label>
+      <label><span>Gallons</span><input type="number" name="gallons" min="0" step="0.01" required></label>
       <label><span>Total cost</span><input type="number" name="total_cost" min="0" step="0.01" required></label>
       <label><span>Station</span><input type="text" name="station"></label>
       <label class="checkbox-label"><input type="checkbox" name="full_tank" checked> Full tank fill</label>
@@ -1942,11 +1944,11 @@ def render_fuel_logs(fuel_logs):
           <div class="item-head">
             <div class="item-title-row">
               <div class="item-title">{h(item['vehicle_name'])}</div>
-              <span class="badge active">{round(item['price_per_liter'], 2)} / L</span>
+              <span class="badge active">{money(liters_price_to_gallon_price(item['price_per_liter']))} / gal</span>
             </div>
             <strong>{money(item['total_cost'])}</strong>
           </div>
-          <div class="muted">{h(item['fill_date'])} | {item['liters']} L | {item['odometer']} km</div>
+          <div class="muted">{h(item['fill_date'])} | {format_gallons(item['liters'])} gal | {item['odometer']} km</div>
           <div class="muted">{h(item['station'] or 'Station not set')} | {'Full tank' if item['full_tank'] else 'Partial fill'}</div>
         </article>
         """
@@ -2046,7 +2048,9 @@ def build_reminder_details(reminder, days_left):
 def build_stats(vehicles, maintenance, fuel_logs, reminders):
     fuel_spend = sum(item["total_cost"] for item in fuel_logs)
     maintenance_spend = sum(item["cost"] for item in maintenance)
-    avg_fuel_price = (sum(item["price_per_liter"] for item in fuel_logs) / len(fuel_logs)) if fuel_logs else 0
+    avg_fuel_price = (
+        sum(liters_price_to_gallon_price(item["price_per_liter"]) for item in fuel_logs) / len(fuel_logs)
+    ) if fuel_logs else 0
     return {
         "vehicle_count": len(vehicles),
         "maintenance_spend": maintenance_spend,
@@ -2110,6 +2114,24 @@ def parse_iso_date(value):
 
 def money(value):
     return f"${float(value or 0):,.2f}"
+
+
+def gallons_to_liters(gallons):
+    return float(gallons or 0) * LITERS_PER_GALLON
+
+
+def liters_to_gallons(liters):
+    liters_value = float(liters or 0)
+    return liters_value / LITERS_PER_GALLON if liters_value else 0
+
+
+def liters_price_to_gallon_price(price_per_liter):
+    price_value = float(price_per_liter or 0)
+    return price_value * LITERS_PER_GALLON if price_value else 0
+
+
+def format_gallons(liters):
+    return f"{liters_to_gallons(liters):.2f}"
 
 
 def slugify(value):

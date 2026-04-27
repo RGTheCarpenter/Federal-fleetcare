@@ -9,7 +9,7 @@ FleetCare is now a local full-stack fleet management app inspired by Drivvo.
 - Vehicle records with status and odometer
 - Driver records and vehicle assignments
 - Maintenance logs with next service targets
-- Fuel logs with spend and price-per-liter tracking
+- Fuel logs with spend and price-per-gallon tracking
 - Reminder-based alerts for due and overdue work
 - Downloadable PDF fleet report
 - Mobile-friendly dashboard for phones and tablets
