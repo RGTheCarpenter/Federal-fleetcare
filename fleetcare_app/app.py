@@ -1702,37 +1702,33 @@ def render_tracking_status(active_trip, gps_logs):
         location_text = f"{round(float(row_value(latest_point, 'latitude')), 6)}, {round(float(row_value(latest_point, 'longitude')), 6)}"
 
     return f"""
-    <div class="tracking-status" data-tracking-summary>
-      <div class="tracking-status__hero">
-        <div>
-          <div class="item-title-row">
-            <div class="item-title">{h(APP_BRAND)} GPS</div>
-            <span class="badge {active_tone}" data-tracking-mode>{active_label}</span>
+    <details class="tracking-status" data-tracking-summary>
+      <div class="tracking-status__body">
+        <div class="tracking-status__hero">
+          <div>
+            <div class="item-title-row">
+              <div class="item-title">{h(APP_BRAND)} GPS</div>
+              <span class="badge {active_tone}" data-tracking-mode>{active_label}</span>
+            </div>
+            <p class="muted">Use manual capture for one checkpoint, or start a trip for ongoing route collection.</p>
           </div>
-          <p class="muted">Use manual capture for one checkpoint, or start a trip for ongoing route collection.</p>
+          <button type="button" class="ghost-btn" data-request-location>Allow location access</button>
         </div>
-        <button type="button" class="ghost-btn" data-request-location>Allow location access</button>
-      </div>
-      <div class="tracking-grid">
-        <div class="tracking-pill">
-          <strong>Tracking target</strong>
-          <span>{vehicle_name}{f" - {plate}" if plate else ""}</span>
+        <div class="tracking-grid">
+          <div class="tracking-pill">
+            <strong>Tracking target</strong>
+            <span>{vehicle_name}{f" - {plate}" if plate else ""}</span>
+          </div>
+          <div class="tracking-pill">
+            <strong>Last saved point</strong>
+            <span data-tracking-last-saved>{last_saved}</span>
+          </div>
+          <div class="tracking-pill">
+            <strong>Last coordinates</strong>
+            <span>{location_text}</span>
+          </div>
         </div>
-        <div class="tracking-pill">
-          <strong>Last saved point</strong>
-          <span data-tracking-last-saved>{last_saved}</span>
-        </div>
-        <div class="tracking-pill">
-          <strong>Last coordinates</strong>
-          <span>{location_text}</span>
-        </div>
-      </div>
-      <div class="flash error tracking-error" data-tracking-error hidden></div>
-      <details class="tracking-dropdown">
-        <summary>
-          <span>Tracking details</span>
-          <span class="tracking-dropdown__hint">Open</span>
-        </summary>
+        <div class="flash error tracking-error" data-tracking-error hidden></div>
         <div class="tracking-tips">
           <div class="tracking-tip">
             <strong>Browser mode</strong>
@@ -1743,8 +1739,12 @@ def render_tracking_status(active_trip, gps_logs):
             <span>The wrapper is now prepared for location permissions, notifications, and the release paperwork needed for deeper background tracking.</span>
           </div>
         </div>
-      </details>
-    </div>
+      </div>
+      <summary class="tracking-dropdown">
+        <span>Tracking status</span>
+        <span class="tracking-dropdown__hint"></span>
+      </summary>
+    </details>
     """
 
 

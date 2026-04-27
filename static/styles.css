@@ -472,7 +472,8 @@ textarea {
 }
 
 .tracking-status {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 16px;
 }
 
@@ -483,9 +484,20 @@ textarea {
   gap: 12px;
 }
 
-.tracking-dropdown summary {
+.tracking-status__body {
+  display: grid;
+  gap: 16px;
+  order: 1;
+}
+
+.tracking-status:not([open]) .tracking-status__body {
+  display: none;
+}
+
+.tracking-status summary.tracking-dropdown {
   display: inline-flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
   min-height: 44px;
   padding: 10px 16px;
@@ -496,25 +508,25 @@ textarea {
   list-style: none;
   color: var(--accent-strong);
   font-weight: 700;
+  order: 2;
 }
 
-.tracking-dropdown summary::-webkit-details-marker {
+.tracking-status summary.tracking-dropdown::-webkit-details-marker {
   display: none;
 }
 
-.tracking-dropdown summary::after {
+.tracking-status summary.tracking-dropdown::after {
   content: "▾";
-  margin-left: 2px;
   font-weight: 600;
   color: var(--muted);
   transition: transform 180ms ease;
 }
 
-.tracking-dropdown[open] summary::after {
+.tracking-status[open] summary.tracking-dropdown::after {
   transform: rotate(180deg);
 }
 
-.tracking-dropdown[open] .tracking-dropdown__hint::after {
+.tracking-status[open] .tracking-dropdown__hint::after {
   content: "Hide";
 }
 
@@ -525,10 +537,6 @@ textarea {
 
 .tracking-dropdown__hint::after {
   content: "Open";
-}
-
-.tracking-dropdown .tracking-tips {
-  margin-top: 12px;
 }
 
 .tracking-status__hero {
