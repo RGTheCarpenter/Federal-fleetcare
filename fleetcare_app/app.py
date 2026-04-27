@@ -1729,7 +1729,10 @@ def render_tracking_status(active_trip, gps_logs):
       </div>
       <div class="flash error tracking-error" data-tracking-error hidden></div>
       <details class="tracking-dropdown">
-        <summary>Open tracking details</summary>
+        <summary>
+          <span>Tracking details</span>
+          <span class="tracking-dropdown__hint">Open</span>
+        </summary>
         <div class="tracking-tips">
           <div class="tracking-tip">
             <strong>Browser mode</strong>

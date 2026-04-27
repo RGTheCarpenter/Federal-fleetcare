@@ -484,6 +484,14 @@ textarea {
 }
 
 .tracking-dropdown summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 10px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.82);
   cursor: pointer;
   list-style: none;
   color: var(--accent-strong);
@@ -495,14 +503,28 @@ textarea {
 }
 
 .tracking-dropdown summary::after {
-  content: "Show more";
-  margin-left: 10px;
+  content: "▾";
+  margin-left: 2px;
   font-weight: 600;
   color: var(--muted);
+  transition: transform 180ms ease;
 }
 
 .tracking-dropdown[open] summary::after {
+  transform: rotate(180deg);
+}
+
+.tracking-dropdown[open] .tracking-dropdown__hint::after {
   content: "Hide";
+}
+
+.tracking-dropdown__hint {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.tracking-dropdown__hint::after {
+  content: "Open";
 }
 
 .tracking-dropdown .tracking-tips {
