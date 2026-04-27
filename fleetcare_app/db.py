@@ -105,6 +105,11 @@ def schema_statements(engine):
             company_name TEXT NOT NULL,
             email TEXT NOT NULL UNIQUE,
             password_hash TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'owner',
+            owner_user_id {integer_fk},
+            driver_profile_id {integer_fk},
+            alert_email TEXT,
+            alert_sms_email TEXT,
             created_at {timestamp_type}
         )
         """,
@@ -243,6 +248,11 @@ def migration_statements(engine):
     timestamp_type = "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"
 
     return [
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'owner'",
+        f"ALTER TABLE users ADD COLUMN IF NOT EXISTS owner_user_id {integer_fk}",
+        f"ALTER TABLE users ADD COLUMN IF NOT EXISTS driver_profile_id {integer_fk}",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS alert_email TEXT",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS alert_sms_email TEXT",
         "ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS photo_name TEXT",
         "ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS photo_data TEXT",
         "ALTER TABLE maintenance_logs ADD COLUMN IF NOT EXISTS attachment_name TEXT",

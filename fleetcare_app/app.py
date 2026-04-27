@@ -10,6 +10,7 @@ from urllib.parse import parse_qs, urlencode, urlparse
 
 from .auth import hash_password, load_secret_key, read_session, sign_session, verify_password
 from .db import get_connection, init_db
+from .notifier import send_owner_notification
 from .pdf import build_simple_pdf
 
 
@@ -74,6 +75,12 @@ class FleetCareHandler(BaseHTTPRequestHandler):
         if not user:
             return
 
+        if path == "/account/notifications":
+            return self.handle_notification_update(user, form)
+
+        if is_driver(user) and path not in {"/maintenance/add", "/fuel/add", "/gps/add", "/trips/start", "/trips/stop"}:
+            return self.redirect(section_url("maintenance", anchor="maintenance"))
+
         if path == "/vehicles/add":
             return self.handle_vehicle_add(user, form)
         if path == "/vehicles/update":
@@ -126,7 +133,19 @@ class FleetCareHandler(BaseHTTPRequestHandler):
 
         with get_connection() as connection:
             return connection.execute(
-                "SELECT id, company_name, email FROM users WHERE id = ?",
+                """
+                SELECT
+                    id,
+                    company_name,
+                    email,
+                    role,
+                    owner_user_id,
+                    driver_profile_id,
+                    alert_email,
+                    alert_sms_email
+                FROM users
+                WHERE id = ?
+                """,
                 (user_id,),
             ).fetchone()
 
@@ -157,18 +176,27 @@ class FleetCareHandler(BaseHTTPRequestHandler):
             with get_connection() as connection:
                 connection.execute(
                     """
-                    INSERT INTO users (company_name, email, password_hash)
-                    VALUES (?, ?, ?)
+                    INSERT INTO users (company_name, email, password_hash, role, alert_email)
+                    VALUES (?, ?, ?, 'owner', ?)
                     """,
-                    (company_name, email, password_hash),
+                    (company_name, email, password_hash, email),
                 )
                 user = connection.execute(
-                    "SELECT id FROM users WHERE email = ?",
+                    """
+                    SELECT id, company_name, email, role, owner_user_id, driver_profile_id, alert_email, alert_sms_email
+                    FROM users
+                    WHERE email = ?
+                    """,
                     (email,),
                 ).fetchone()
         except Exception:
             return self.redirect("/register?error=That+email+is+already+registered")
 
+        notify_company_event(
+            user,
+            "New owner account created",
+            f"A new owner account was created for {company_name}.\n\nEmail: {email}\nRole: owner",
+        )
         return self.login_user(user["id"])
 
     def handle_login(self, form):
@@ -186,6 +214,24 @@ class FleetCareHandler(BaseHTTPRequestHandler):
 
         return self.login_user(user["id"])
 
+    def handle_notification_update(self, user, form):
+        if is_driver(user):
+            return self.redirect("/maintenance")
+
+        alert_email = form.get("alert_email", "").lower()
+        alert_sms_email = form.get("alert_sms_email", "").lower()
+        with get_connection() as connection:
+            connection.execute(
+                """
+                UPDATE users
+                SET alert_email = ?, alert_sms_email = ?
+                WHERE id = ?
+                """,
+                (alert_email or None, alert_sms_email or None, user["id"]),
+            )
+
+        self.redirect(section_url("alerts", anchor="notification-settings"))
+
     def handle_logout(self):
         self.send_response(303)
         self.send_header("Set-Cookie", self.session_cookie("", max_age=0))
@@ -200,6 +246,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def handle_vehicle_add(self, user, form):
+        scope_id = company_scope_user_id(user)
         with get_connection() as connection:
             connection.execute(
                 """
@@ -207,7 +254,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    user["id"],
+                    scope_id,
                     form.get("name", ""),
                     form.get("plate", "").upper(),
                     form.get("model", ""),
@@ -219,10 +266,12 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 ),
             )
 
+        notify_company_event(user, "Vehicle added", f'{actor_label(user)} added vehicle {form.get("name", "").strip()} ({form.get("plate", "").strip().upper()}).')
         self.redirect(section_url("vehicles", vehicle_view="add", anchor="vehicles"))
 
     def handle_vehicle_update(self, user, form):
         vehicle_id = int(form.get("vehicle_id") or 0)
+        scope_id = company_scope_user_id(user)
         with get_connection() as connection:
             connection.execute(
                 """
@@ -240,7 +289,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                     clean_upload_name(form.get("photo_name", "")),
                     clean_upload_data(form.get("photo_data", "")),
                     vehicle_id,
-                    user["id"],
+                    scope_id,
                 ),
             )
 
@@ -248,15 +297,19 @@ class FleetCareHandler(BaseHTTPRequestHandler):
 
     def handle_vehicle_delete(self, user, form):
         vehicle_id = int(form.get("vehicle_id") or 0)
+        scope_id = company_scope_user_id(user)
         with get_connection() as connection:
             connection.execute(
                 "DELETE FROM vehicles WHERE id = ? AND user_id = ?",
-                (vehicle_id, user["id"]),
+                (vehicle_id, scope_id),
             )
 
         self.redirect(section_url("vehicles", vehicle_view="history", anchor="vehicles"))
 
     def handle_driver_add(self, user, form):
+        scope_id = company_scope_user_id(user)
+        login_email = form.get("login_email", "").lower()
+        temporary_password = form.get("temporary_password", "")
         with get_connection() as connection:
             connection.execute(
                 """
@@ -264,7 +317,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    user["id"],
+                    scope_id,
                     form.get("name", ""),
                     form.get("license_number", ""),
                     form.get("phone", ""),
@@ -272,11 +325,36 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                     form.get("status", "Active"),
                 ),
             )
+            driver = connection.execute(
+                "SELECT id FROM drivers WHERE user_id = ? ORDER BY id DESC LIMIT 1",
+                (scope_id,),
+            ).fetchone()
+            if login_email and temporary_password:
+                connection.execute(
+                    """
+                    INSERT INTO users (company_name, email, password_hash, role, owner_user_id, driver_profile_id)
+                    VALUES (?, ?, ?, 'driver', ?, ?)
+                    """,
+                    (
+                        user["company_name"],
+                        login_email,
+                        hash_password(temporary_password),
+                        scope_id,
+                        driver["id"],
+                    ),
+                )
 
+        notify_company_event(
+            user,
+            "Driver profile added",
+            f'{actor_label(user)} added driver {form.get("name", "").strip()}.'
+            + (f"\nDriver login enabled for {login_email}." if login_email and temporary_password else ""),
+        )
         self.redirect(section_url("drivers", anchor="drivers"))
 
     def handle_driver_update(self, user, form):
         driver_id = int(form.get("driver_id") or 0)
+        scope_id = company_scope_user_id(user)
         with get_connection() as connection:
             connection.execute(
                 """
@@ -291,7 +369,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                     form.get("email", ""),
                     form.get("status", "Active"),
                     driver_id,
-                    user["id"],
+                    scope_id,
                 ),
             )
 
@@ -299,10 +377,15 @@ class FleetCareHandler(BaseHTTPRequestHandler):
 
     def handle_driver_delete(self, user, form):
         driver_id = int(form.get("driver_id") or 0)
+        scope_id = company_scope_user_id(user)
         with get_connection() as connection:
             connection.execute(
+                "DELETE FROM users WHERE owner_user_id = ? AND driver_profile_id = ?",
+                (scope_id, driver_id),
+            )
+            connection.execute(
                 "DELETE FROM drivers WHERE id = ? AND user_id = ?",
-                (driver_id, user["id"]),
+                (driver_id, scope_id),
             )
 
         self.redirect(section_url("drivers", anchor="drivers"))
@@ -310,6 +393,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
     def handle_assignment_add(self, user, form):
         vehicle_id = int(form.get("vehicle_id") or 0)
         driver_id = int(form.get("driver_id") or 0)
+        scope_id = company_scope_user_id(user)
 
         with get_connection() as connection:
             connection.execute(
@@ -318,7 +402,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 SET active = 0
                 WHERE user_id = ? AND vehicle_id = ? AND active = 1
                 """,
-                (user["id"], vehicle_id),
+                (scope_id, vehicle_id),
             )
             connection.execute(
                 """
@@ -326,7 +410,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 VALUES (?, ?, ?, ?, ?, ?, 1)
                 """,
                 (
-                    user["id"],
+                    scope_id,
                     vehicle_id,
                     driver_id,
                     form.get("start_date", ""),
@@ -335,11 +419,13 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 ),
             )
 
+        notify_company_event(user, "Assignment created", f"{actor_label(user)} assigned a driver to vehicle ID {vehicle_id}.")
         self.redirect(section_url("assignments", anchor="assignments"))
 
     def handle_maintenance_add(self, user, form):
         vehicle_id = int(form.get("vehicle_id") or 0)
         odometer = int(form.get("odometer") or 0)
+        scope_id = company_scope_user_id(user)
 
         with get_connection() as connection:
             connection.execute(
@@ -349,7 +435,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    user["id"],
+                    scope_id,
                     vehicle_id,
                     form.get("service_type", ""),
                     form.get("service_date", ""),
@@ -371,9 +457,14 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 END
                 WHERE id = ? AND user_id = ?
                 """,
-                (odometer, odometer, vehicle_id, user["id"]),
+                (odometer, odometer, vehicle_id, scope_id),
             )
 
+        notify_company_event(
+            user,
+            "Maintenance logged",
+            f'{actor_label(user)} logged maintenance "{form.get("service_type", "").strip()}" for vehicle ID {vehicle_id} on {form.get("service_date", "").strip()}.',
+        )
         self.redirect(section_url("maintenance", anchor="maintenance"))
 
     def handle_fuel_add(self, user, form):
@@ -383,6 +474,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
         total_cost = float(form.get("total_cost") or 0)
         price_per_liter = total_cost / liters if liters else 0
         full_tank = 1 if form.get("full_tank") == "on" else 0
+        scope_id = company_scope_user_id(user)
 
         with get_connection() as connection:
             connection.execute(
@@ -392,7 +484,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    user["id"],
+                    scope_id,
                     vehicle_id,
                     form.get("fill_date", ""),
                     odometer,
@@ -413,12 +505,18 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 END
                 WHERE id = ? AND user_id = ?
                 """,
-                (odometer, odometer, vehicle_id, user["id"]),
+                (odometer, odometer, vehicle_id, scope_id),
             )
 
+        notify_company_event(
+            user,
+            "Fuel log added",
+            f'{actor_label(user)} logged fuel for vehicle ID {vehicle_id} on {form.get("fill_date", "").strip()} for {money(total_cost)}.',
+        )
         self.redirect(section_url("fuel", anchor="fuel"))
 
     def handle_reminder_add(self, user, form):
+        scope_id = company_scope_user_id(user)
         with get_connection() as connection:
             connection.execute(
                 """
@@ -426,7 +524,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 VALUES (?, ?, ?, ?, ?, ?, 'Open')
                 """,
                 (
-                    user["id"],
+                    scope_id,
                     int(form.get("vehicle_id") or 0),
                     form.get("title", ""),
                     form.get("due_date") or None,
@@ -435,6 +533,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 ),
             )
 
+        notify_company_event(user, "Reminder created", f'{actor_label(user)} created reminder "{form.get("title", "").strip()}".')
         self.redirect(section_url("alerts", anchor="reminders"))
 
     def handle_gps_add(self, user, form):
@@ -443,6 +542,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
         latitude = parse_coordinate(form.get("latitude"))
         longitude = parse_coordinate(form.get("longitude"))
         accuracy = parse_coordinate(form.get("accuracy_meters"))
+        scope_id = company_scope_user_id(user)
 
         if not vehicle_id or latitude is None or longitude is None:
             return self.redirect(section_url("vehicles", vehicle_view="capture", anchor="gps"))
@@ -453,9 +553,14 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 INSERT INTO gps_logs (user_id, vehicle_id, trip_id, latitude, longitude, accuracy_meters)
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (user["id"], vehicle_id, trip_id, latitude, longitude, accuracy),
+                (scope_id, vehicle_id, trip_id, latitude, longitude, accuracy),
             )
 
+        notify_company_event(
+            user,
+            "GPS location saved",
+            f"{actor_label(user)} saved a GPS checkpoint for vehicle ID {vehicle_id} at {latitude:.6f}, {longitude:.6f}.",
+        )
         self.redirect(section_url("vehicles", vehicle_view="capture", anchor="gps"))
 
     def handle_trip_start(self, user, form):
@@ -463,6 +568,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
         latitude = parse_coordinate(form.get("latitude"))
         longitude = parse_coordinate(form.get("longitude"))
         label = form.get("label", "")
+        scope_id = company_scope_user_id(user)
 
         if not vehicle_id:
             return self.redirect(section_url("vehicles", vehicle_view="trips", anchor="trip-control"))
@@ -470,18 +576,18 @@ class FleetCareHandler(BaseHTTPRequestHandler):
         with get_connection() as connection:
             connection.execute(
                 "UPDATE trips SET status = 'Completed', ended_at = CURRENT_TIMESTAMP WHERE user_id = ? AND status = 'Active'",
-                (user["id"],),
+                (scope_id,),
             )
             connection.execute(
                 """
                 INSERT INTO trips (user_id, vehicle_id, label, start_latitude, start_longitude, status)
                 VALUES (?, ?, ?, ?, ?, 'Active')
                 """,
-                (user["id"], vehicle_id, label or None, latitude, longitude),
+                (scope_id, vehicle_id, label or None, latitude, longitude),
             )
             trip = connection.execute(
                 "SELECT id FROM trips WHERE user_id = ? AND vehicle_id = ? AND status = 'Active' ORDER BY started_at DESC LIMIT 1",
-                (user["id"], vehicle_id),
+                (scope_id, vehicle_id),
             ).fetchone()
             if trip and latitude is not None and longitude is not None:
                 connection.execute(
@@ -489,9 +595,10 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                     INSERT INTO gps_logs (user_id, vehicle_id, trip_id, latitude, longitude, accuracy_meters)
                     VALUES (?, ?, ?, ?, ?, ?)
                     """,
-                    (user["id"], vehicle_id, trip["id"], latitude, longitude, parse_coordinate(form.get("accuracy_meters"))),
+                    (scope_id, vehicle_id, trip["id"], latitude, longitude, parse_coordinate(form.get("accuracy_meters"))),
                 )
 
+        notify_company_event(user, "Trip started", f'{actor_label(user)} started trip "{label or "Trip"}" for vehicle ID {vehicle_id}.')
         self.redirect(section_url("vehicles", vehicle_view="trips", anchor="trip-control"))
 
     def handle_trip_stop(self, user, form):
@@ -499,6 +606,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
         latitude = parse_coordinate(form.get("latitude"))
         longitude = parse_coordinate(form.get("longitude"))
         accuracy = parse_coordinate(form.get("accuracy_meters"))
+        scope_id = company_scope_user_id(user)
 
         if not trip_id:
             return self.redirect(section_url("vehicles", vehicle_view="trips", anchor="trip-control"))
@@ -506,7 +614,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
         with get_connection() as connection:
             trip = connection.execute(
                 "SELECT id, vehicle_id FROM trips WHERE id = ? AND user_id = ? AND status = 'Active'",
-                (trip_id, user["id"]),
+                (trip_id, scope_id),
             ).fetchone()
             if not trip:
                 return self.redirect(section_url("vehicles", vehicle_view="trips", anchor="trip-control"))
@@ -517,7 +625,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                     INSERT INTO gps_logs (user_id, vehicle_id, trip_id, latitude, longitude, accuracy_meters)
                     VALUES (?, ?, ?, ?, ?, ?)
                     """,
-                    (user["id"], trip["vehicle_id"], trip_id, latitude, longitude, accuracy),
+                    (scope_id, trip["vehicle_id"], trip_id, latitude, longitude, accuracy),
                 )
             connection.execute(
                 """
@@ -525,9 +633,10 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 SET status = 'Completed', ended_at = CURRENT_TIMESTAMP, end_latitude = ?, end_longitude = ?
                 WHERE id = ? AND user_id = ?
                 """,
-                (latitude, longitude, trip_id, user["id"]),
+                (latitude, longitude, trip_id, scope_id),
             )
 
+        notify_company_event(user, "Trip stopped", f"{actor_label(user)} stopped trip ID {trip_id}.")
         self.redirect(section_url("vehicles", vehicle_view="history", anchor="trip-history"))
 
     def render_auth_page(self, mode):
@@ -584,11 +693,15 @@ class FleetCareHandler(BaseHTTPRequestHandler):
         user = self.require_user()
         if not user:
             return
-        active_tab = get_active_tab(route, forced_tab)
-        active_vehicle_view = get_vehicle_view(route)
+        scope_id = company_scope_user_id(user)
+        owner_mode = is_owner(user)
+        active_tab = normalize_tab_for_role(get_active_tab(route, forced_tab), user)
+        active_vehicle_view = normalize_vehicle_view_for_role(get_vehicle_view(route), user)
 
         try:
             with get_connection() as connection:
+                assigned_vehicle_ids = assigned_vehicle_id_list(connection, user)
+                vehicle_scope = build_vehicle_scope_clause("v.id", assigned_vehicle_ids, owner_mode)
                 vehicles = connection.execute(
                     """
                     SELECT
@@ -623,14 +736,25 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                         ) AS last_location_at
                     FROM vehicles v
                     WHERE v.user_id = ?
+                    {vehicle_scope}
                     ORDER BY v.created_at DESC
-                    """,
-                    (user["id"],),
+                    """.replace("{vehicle_scope}", vehicle_scope[0]),
+                    (scope_id, *vehicle_scope[1]),
                 ).fetchall()
                 drivers = connection.execute(
-                    "SELECT * FROM drivers WHERE user_id = ? ORDER BY created_at DESC",
-                    (user["id"],),
+                    """
+                    SELECT d.*, du.email AS login_email
+                    FROM drivers d
+                    LEFT JOIN users du
+                      ON du.driver_profile_id = d.id
+                     AND du.owner_user_id = d.user_id
+                     AND du.role = 'driver'
+                    WHERE d.user_id = ?
+                    ORDER BY d.created_at DESC
+                    """,
+                    (scope_id,),
                 ).fetchall()
+                assignment_scope = build_driver_assignment_scope(user)
                 assignments = connection.execute(
                     """
                     SELECT a.*, v.name AS vehicle_name, v.plate, d.name AS driver_name
@@ -638,69 +762,81 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                     JOIN vehicles v ON v.id = a.vehicle_id
                     JOIN drivers d ON d.id = a.driver_id
                     WHERE a.user_id = ?
+                    {assignment_scope}
                     ORDER BY a.active DESC, a.start_date DESC
-                    """,
-                    (user["id"],),
+                    """.replace("{assignment_scope}", assignment_scope[0]),
+                    (scope_id, *assignment_scope[1]),
                 ).fetchall()
+                maintenance_scope = build_vehicle_scope_clause("m.vehicle_id", assigned_vehicle_ids, owner_mode)
                 maintenance = connection.execute(
                     """
                     SELECT m.*, v.name AS vehicle_name, v.plate
                     FROM maintenance_logs m
                     JOIN vehicles v ON v.id = m.vehicle_id
                     WHERE m.user_id = ?
+                    {maintenance_scope}
                     ORDER BY m.service_date DESC
                     LIMIT 8
-                    """,
-                    (user["id"],),
+                    """.replace("{maintenance_scope}", maintenance_scope[0]),
+                    (scope_id, *maintenance_scope[1]),
                 ).fetchall()
+                fuel_scope = build_vehicle_scope_clause("f.vehicle_id", assigned_vehicle_ids, owner_mode)
                 fuel_logs = connection.execute(
                     """
                     SELECT f.*, v.name AS vehicle_name, v.plate
                     FROM fuel_logs f
                     JOIN vehicles v ON v.id = f.vehicle_id
                     WHERE f.user_id = ?
+                    {fuel_scope}
                     ORDER BY f.fill_date DESC
                     LIMIT 8
-                    """,
-                    (user["id"],),
+                    """.replace("{fuel_scope}", fuel_scope[0]),
+                    (scope_id, *fuel_scope[1]),
                 ).fetchall()
+                reminder_scope = build_vehicle_scope_clause("r.vehicle_id", assigned_vehicle_ids, owner_mode)
                 reminders = connection.execute(
                     """
                     SELECT r.*, v.name AS vehicle_name, v.plate, v.odometer AS vehicle_odometer
                     FROM reminders r
                     JOIN vehicles v ON v.id = r.vehicle_id
                     WHERE r.user_id = ? AND r.status = 'Open'
+                    {reminder_scope}
                     ORDER BY COALESCE(r.due_date, '9999-12-31'), COALESCE(r.due_odometer, 999999999)
-                    """,
-                    (user["id"],),
+                    """.replace("{reminder_scope}", reminder_scope[0]),
+                    (scope_id, *reminder_scope[1]),
                 ).fetchall()
                 gps_logs = []
                 active_trip = None
                 trips = []
                 trip_points = []
                 try:
+                    gps_scope = build_vehicle_scope_clause("g.vehicle_id", assigned_vehicle_ids, owner_mode)
                     gps_logs = connection.execute(
                         """
                         SELECT g.*, v.name AS vehicle_name, v.plate
                         FROM gps_logs g
                         JOIN vehicles v ON v.id = g.vehicle_id
                         WHERE g.user_id = ?
+                        {gps_scope}
                         ORDER BY g.created_at DESC
                         LIMIT 12
-                        """,
-                        (user["id"],),
+                        """.replace("{gps_scope}", gps_scope[0]),
+                        (scope_id, *gps_scope[1]),
                     ).fetchall()
+                    active_trip_scope = build_vehicle_scope_clause("t.vehicle_id", assigned_vehicle_ids, owner_mode)
                     active_trip = connection.execute(
                         """
                         SELECT t.*, v.name AS vehicle_name, v.plate
                         FROM trips t
                         JOIN vehicles v ON v.id = t.vehicle_id
                         WHERE t.user_id = ? AND t.status = 'Active'
+                        {active_trip_scope}
                         ORDER BY t.started_at DESC
                         LIMIT 1
-                        """,
-                        (user["id"],),
+                        """.replace("{active_trip_scope}", active_trip_scope[0]),
+                        (scope_id, *active_trip_scope[1]),
                     ).fetchone()
+                    trip_scope = build_vehicle_scope_clause("t.vehicle_id", assigned_vehicle_ids, owner_mode)
                     trips = connection.execute(
                         """
                         SELECT
@@ -715,19 +851,22 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                         FROM trips t
                         JOIN vehicles v ON v.id = t.vehicle_id
                         WHERE t.user_id = ?
+                        {trip_scope}
                         ORDER BY t.started_at DESC
                         LIMIT 8
-                        """,
-                        (user["id"],),
+                        """.replace("{trip_scope}", trip_scope[0]),
+                        (scope_id, *trip_scope[1]),
                     ).fetchall()
+                    trip_point_scope = build_vehicle_scope_clause("vehicle_id", assigned_vehicle_ids, owner_mode)
                     trip_points = connection.execute(
                         """
                         SELECT trip_id, latitude, longitude, created_at
                         FROM gps_logs
                         WHERE user_id = ? AND trip_id IS NOT NULL
+                        {trip_point_scope}
                         ORDER BY trip_id, created_at
-                        """,
-                        (user["id"],),
+                        """.replace("{trip_point_scope}", trip_point_scope[0]),
+                        (scope_id, *trip_point_scope[1]),
                     ).fetchall()
                 except Exception as error:
                     print(f"GPS dashboard data skipped: {error}")
@@ -737,6 +876,217 @@ class FleetCareHandler(BaseHTTPRequestHandler):
             mobile_reminders = json.dumps(build_mobile_reminders(reminders), separators=(",", ":"))
             trip_routes = json.dumps(build_trip_routes(trip_points), separators=(",", ":"))
             tracking_state = json.dumps(build_tracking_payload(active_trip, gps_logs), separators=(",", ":"))
+            report_panel = (
+                """
+          <details class="report-panel">
+            <summary>
+              <span>
+                <span class="section-kicker">Reports</span>
+                <strong>Download PDF report</strong>
+              </span>
+            </summary>
+            <form method="get" action="/reports/fleet.pdf" class="report-form">
+              <label>
+                <span>Report month</span>
+                <input type="month" name="month">
+              </label>
+              <label>
+                <span>From date</span>
+                <input type="date" name="start_date">
+              </label>
+              <label>
+                <span>To date</span>
+                <input type="date" name="end_date">
+              </label>
+              <button type="submit" class="primary-btn">Download PDF</button>
+            </form>
+            <p class="muted report-help">Choose a month, or leave month blank and choose a custom from/to date range.</p>
+          </details>
+                """
+                if owner_mode
+                else ""
+            )
+            nav_links = "".join(
+                render_tab_link(tab_name, label, active_tab)
+                for tab_name, label in allowed_tabs_for_user(user)
+            )
+            stats_panel = (
+                f"""
+          <section class="stats-grid">
+            {render_stat("Vehicles", len(vehicles))}
+            {render_stat("Drivers", len(drivers))}
+            {render_stat("Open alerts", len(alerts))}
+            {render_stat("Fuel spend", money(stats["fuel_spend"]))}
+            {render_stat("Maintenance spend", money(stats["maintenance_spend"]))}
+            {render_stat("Avg fuel price", money(stats["avg_fuel_price"]))}
+          </section>
+                """
+                if owner_mode
+                else """
+          <section class="panel compact-role-panel">
+            <div class="panel-header"><div><p class="section-kicker">Driver view</p><h2>Logging access</h2></div></div>
+            <p class="muted">This account can add maintenance, fuel, GPS, and trip updates, but it cannot see company reports or management screens.</p>
+          </section>
+                """
+            )
+            alert_summary_section = (
+                f"""
+          <section class="{tab_panel_classes('alerts', active_tab, 'panel span-two')}" data-tab-section="alerts" {"hidden" if active_tab != "alerts" else ""}>
+            <div class="panel-header">
+              <div>
+                <p class="section-kicker">Alerts</p>
+                <h2>What needs attention</h2>
+              </div>
+            </div>
+            <div class="stack-list">
+              {render_alerts(alerts)}
+            </div>
+          </section>
+                """
+                if owner_mode
+                else ""
+            )
+            vehicle_subtabs = "".join(
+                render_subtab_link("vehicles", view_name, label, active_vehicle_view)
+                for view_name, label in allowed_vehicle_views_for_user(user)
+            )
+            vehicle_add_panel = (
+                """
+            <section class="{classes}" id="vehicles" data-tab-section="vehicles" {hidden}>
+              <div class="panel-header"><div><p class="section-kicker">Fleet</p><h2>Add vehicle</h2></div></div>
+              <form method="post" action="/vehicles/add" class="form-grid">
+                <label><span>Name</span><input type="text" name="name" required></label>
+                <label><span>Plate</span><input type="text" name="plate" required></label>
+                <label><span>Model</span><input type="text" name="model"></label>
+                <label><span>Year</span><input type="number" name="year" min="1990" max="2100"></label>
+                <label><span>Odometer</span><input type="number" name="odometer" min="0" required></label>
+                <label>
+                  <span>Status</span>
+                  <select name="status">
+                    <option>Active</option>
+                    <option>In service</option>
+                    <option>Inactive</option>
+                  </select>
+                </label>
+                {upload}
+                <button type="submit" class="primary-btn">Save vehicle</button>
+              </form>
+            </section>
+                """.format(
+                    classes=tab_panel_classes("vehicles", active_tab, "panel"),
+                    hidden='"hidden"' if active_tab != "vehicles" or active_vehicle_view != "add" else "",
+                    upload=render_upload_field("Vehicle photo", "vehicle-photo-new", "photo_name", "photo_data", "image/*", capture=True),
+                )
+                if owner_mode
+                else ""
+            )
+            drivers_panel = (
+                f"""
+            <section class="{tab_panel_classes('drivers', active_tab, 'panel')}" id="drivers" data-tab-section="drivers" {"hidden" if active_tab != "drivers" else ""}>
+              <div class="panel-header"><div><p class="section-kicker">Drivers</p><h2>Add driver</h2></div></div>
+              <form method="post" action="/drivers/add" class="form-grid">
+                <label><span>Name</span><input type="text" name="name" required></label>
+                <label><span>License number</span><input type="text" name="license_number"></label>
+                <label><span>Phone</span><input type="text" name="phone"></label>
+                <label><span>Email</span><input type="email" name="email"></label>
+                <label>
+                  <span>Status</span>
+                  <select name="status">
+                    <option>Active</option>
+                    <option>Vacation</option>
+                    <option>Inactive</option>
+                  </select>
+                </label>
+                <label><span>Driver login email</span><input type="email" name="login_email"></label>
+                <label><span>Temporary password</span><input type="text" name="temporary_password"></label>
+                <button type="submit" class="primary-btn">Save driver</button>
+              </form>
+            </section>
+                """
+                if owner_mode
+                else ""
+            )
+            assignments_panel = (
+                f"""
+            <section class="{tab_panel_classes('assignments', active_tab, 'panel')}" id="assignments" data-tab-section="assignments" {"hidden" if active_tab != "assignments" else ""}>
+              <div class="panel-header"><div><p class="section-kicker">Assignments</p><h2>Assign vehicle</h2></div></div>
+              {render_assignment_form(vehicles, drivers)}
+            </section>
+                """
+                if owner_mode
+                else ""
+            )
+            alerts_form_panel = (
+                f"""
+            <section class="{tab_panel_classes('alerts', active_tab, 'panel')}" id="reminders" data-tab-section="alerts" {"hidden" if active_tab != "alerts" else ""}>
+              <div class="panel-header"><div><p class="section-kicker">Reminders</p><h2>Create alert reminder</h2></div></div>
+              {render_reminder_form(vehicles)}
+            </section>
+
+            <section class="{tab_panel_classes('alerts', active_tab, 'panel')}" id="notification-settings" data-tab-section="alerts" {"hidden" if active_tab != "alerts" else ""}>
+              <div class="panel-header"><div><p class="section-kicker">Notifications</p><h2>Owner alerts</h2></div></div>
+              {render_notification_settings(user)}
+            </section>
+                """
+                if owner_mode
+                else ""
+            )
+            vehicles_list_panel = f"""
+            <section class="{tab_panel_classes('vehicles', active_tab, 'panel span-two')}" data-tab-section="vehicles" {"hidden" if active_tab != "vehicles" or active_vehicle_view != "overview" else ""}>
+              <div class="panel-header"><div><p class="section-kicker">Current state</p><h2>{'Assigned vehicles' if is_driver(user) else 'Vehicles'}</h2></div></div>
+              <div class="stack-list">{render_vehicles(vehicles, can_manage=owner_mode)}</div>
+            </section>
+            """
+            gps_history_panel = (
+                f"""
+            <section class="{tab_panel_classes('vehicles', active_tab, 'panel span-two')}" data-tab-section="vehicles" {"hidden" if active_tab != "vehicles" or active_vehicle_view != "capture" else ""}>
+              <div class="panel-header"><div><p class="section-kicker">GPS</p><h2>Recent location history</h2></div></div>
+              <div class="stack-list">{render_gps_logs(gps_logs)}</div>
+            </section>
+                """
+                if owner_mode
+                else ""
+            )
+            trip_history_panel = (
+                f"""
+            <section class="{tab_panel_classes('vehicles', active_tab, 'panel span-two')}" id="trip-history" data-tab-section="vehicles" {"hidden" if active_tab != "vehicles" or active_vehicle_view not in {"trips", "history"} else ""}>
+              <div class="panel-header"><div><p class="section-kicker">Trips</p><h2>Trip history and routes</h2></div></div>
+              <div class="stack-list">{render_trip_history(trips)}</div>
+            </section>
+                """
+                if owner_mode
+                else ""
+            )
+            driver_state_panels = (
+                f"""
+            <section class="{tab_panel_classes('drivers', active_tab, 'panel span-two')}" data-tab-section="drivers" {"hidden" if active_tab != "drivers" else ""}>
+              <div class="panel-header"><div><p class="section-kicker">Current state</p><h2>Drivers</h2></div></div>
+              <div class="stack-list">{render_drivers(drivers)}</div>
+            </section>
+
+            <section class="{tab_panel_classes('assignments', active_tab, 'panel span-two')}" data-tab-section="assignments" {"hidden" if active_tab != "assignments" else ""}>
+              <div class="panel-header"><div><p class="section-kicker">Assignments</p><h2>Driver assignments</h2></div></div>
+              <div class="stack-list">{render_assignments(assignments)}</div>
+            </section>
+                """
+                if owner_mode
+                else ""
+            )
+            history_panels = (
+                f"""
+            <section class="{tab_panel_classes('maintenance', active_tab, 'panel span-two')}" data-tab-section="maintenance" {"hidden" if active_tab != "maintenance" else ""}>
+              <div class="panel-header"><div><p class="section-kicker">History</p><h2>Maintenance history</h2></div></div>
+              <div class="stack-list">{render_maintenance_logs(maintenance)}</div>
+            </section>
+
+            <section class="{tab_panel_classes('fuel', active_tab, 'panel span-two')}" data-tab-section="fuel" {"hidden" if active_tab != "fuel" else ""}>
+              <div class="panel-header"><div><p class="section-kicker">Consumption</p><h2>Fuel history</h2></div></div>
+              <div class="stack-list">{render_fuel_logs(fuel_logs)}</div>
+            </section>
+                """
+                if owner_mode
+                else ""
+            )
 
             content = f"""
         <div class="page-shell">
@@ -764,60 +1114,14 @@ class FleetCareHandler(BaseHTTPRequestHandler):
             </div>
           </header>
 
-          <details class="report-panel">
-            <summary>
-              <span>
-                <span class="section-kicker">Reports</span>
-                <strong>Download PDF report</strong>
-              </span>
-            </summary>
-            <form method="get" action="/reports/fleet.pdf" class="report-form">
-              <label>
-                <span>Report month</span>
-                <input type="month" name="month">
-              </label>
-              <label>
-                <span>From date</span>
-                <input type="date" name="start_date">
-              </label>
-              <label>
-                <span>To date</span>
-                <input type="date" name="end_date">
-              </label>
-              <button type="submit" class="primary-btn">Download PDF</button>
-            </form>
-            <p class="muted report-help">Choose a month, or leave month blank and choose a custom from/to date range.</p>
-          </details>
+          {report_panel}
 
           <nav class="quick-links" aria-label="Dashboard sections">
-            {render_tab_link("vehicles", "Vehicles", active_tab)}
-            {render_tab_link("drivers", "Drivers", active_tab)}
-            {render_tab_link("assignments", "Assignments", active_tab)}
-            {render_tab_link("maintenance", "Maintenance", active_tab)}
-            {render_tab_link("fuel", "Fuel", active_tab)}
-            {render_tab_link("alerts", "Alerts", active_tab)}
+            {nav_links}
           </nav>
 
-          <section class="stats-grid">
-            {render_stat("Vehicles", len(vehicles))}
-            {render_stat("Drivers", len(drivers))}
-            {render_stat("Open alerts", len(alerts))}
-            {render_stat("Fuel spend", money(stats["fuel_spend"]))}
-            {render_stat("Maintenance spend", money(stats["maintenance_spend"]))}
-            {render_stat("Avg fuel price", money(stats["avg_fuel_price"]))}
-          </section>
-
-          <section class="{tab_panel_classes('alerts', active_tab, 'panel span-two')}" data-tab-section="alerts" {"hidden" if active_tab != "alerts" else ""}>
-            <div class="panel-header">
-              <div>
-                <p class="section-kicker">Alerts</p>
-                <h2>What needs attention</h2>
-              </div>
-            </div>
-            <div class="stack-list">
-              {render_alerts(alerts)}
-            </div>
-          </section>
+          {stats_panel}
+          {alert_summary_section}
 
           <main class="layout">
             <section class="{tab_panel_classes('vehicles', active_tab, 'panel span-two')}" id="vehicle-workspace" data-tab-section="vehicles" {"hidden" if active_tab != "vehicles" else ""}>
@@ -828,11 +1132,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 </div>
               </div>
               <nav class="sub-links" aria-label="Vehicle workspace views">
-                {render_subtab_link("vehicles", "overview", "Overview", active_vehicle_view)}
-                {render_subtab_link("vehicles", "add", "Add vehicle", active_vehicle_view)}
-                {render_subtab_link("vehicles", "capture", "GPS capture", active_vehicle_view)}
-                {render_subtab_link("vehicles", "trips", "Trips", active_vehicle_view)}
-                {render_subtab_link("vehicles", "history", "History", active_vehicle_view)}
+                {vehicle_subtabs}
               </nav>
             </section>
 
@@ -841,26 +1141,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
               {render_tracking_status(active_trip, gps_logs)}
             </section>
 
-            <section class="{tab_panel_classes('vehicles', active_tab, 'panel')}" id="vehicles" data-tab-section="vehicles" {"hidden" if active_tab != "vehicles" or active_vehicle_view != "add" else ""}>
-              <div class="panel-header"><div><p class="section-kicker">Fleet</p><h2>Add vehicle</h2></div></div>
-              <form method="post" action="/vehicles/add" class="form-grid">
-                <label><span>Name</span><input type="text" name="name" required></label>
-                <label><span>Plate</span><input type="text" name="plate" required></label>
-                <label><span>Model</span><input type="text" name="model"></label>
-                <label><span>Year</span><input type="number" name="year" min="1990" max="2100"></label>
-                <label><span>Odometer</span><input type="number" name="odometer" min="0" required></label>
-                <label>
-                  <span>Status</span>
-                  <select name="status">
-                    <option>Active</option>
-                    <option>In service</option>
-                    <option>Inactive</option>
-                  </select>
-                </label>
-                {render_upload_field("Vehicle photo", "vehicle-photo-new", "photo_name", "photo_data", "image/*", capture=True)}
-                <button type="submit" class="primary-btn">Save vehicle</button>
-              </form>
-            </section>
+            {vehicle_add_panel}
 
             <section class="{tab_panel_classes('vehicles', active_tab, 'panel')}" id="gps" data-tab-section="vehicles" {"hidden" if active_tab != "vehicles" or active_vehicle_view != "capture" else ""}>
               <div class="panel-header"><div><p class="section-kicker">GPS</p><h2>Capture a location</h2></div></div>
@@ -872,29 +1153,8 @@ class FleetCareHandler(BaseHTTPRequestHandler):
               {render_trip_controls(vehicles, active_trip)}
             </section>
 
-            <section class="{tab_panel_classes('drivers', active_tab, 'panel')}" id="drivers" data-tab-section="drivers" {"hidden" if active_tab != "drivers" else ""}>
-              <div class="panel-header"><div><p class="section-kicker">Drivers</p><h2>Add driver</h2></div></div>
-              <form method="post" action="/drivers/add" class="form-grid">
-                <label><span>Name</span><input type="text" name="name" required></label>
-                <label><span>License number</span><input type="text" name="license_number"></label>
-                <label><span>Phone</span><input type="text" name="phone"></label>
-                <label><span>Email</span><input type="email" name="email"></label>
-                <label>
-                  <span>Status</span>
-                  <select name="status">
-                    <option>Active</option>
-                    <option>Vacation</option>
-                    <option>Inactive</option>
-                  </select>
-                </label>
-                <button type="submit" class="primary-btn">Save driver</button>
-              </form>
-            </section>
-
-            <section class="{tab_panel_classes('assignments', active_tab, 'panel')}" id="assignments" data-tab-section="assignments" {"hidden" if active_tab != "assignments" else ""}>
-              <div class="panel-header"><div><p class="section-kicker">Assignments</p><h2>Assign vehicle</h2></div></div>
-              {render_assignment_form(vehicles, drivers)}
-            </section>
+            {drivers_panel}
+            {assignments_panel}
 
             <section class="{tab_panel_classes('maintenance', active_tab, 'panel')}" id="maintenance" data-tab-section="maintenance" {"hidden" if active_tab != "maintenance" else ""}>
               <div class="panel-header"><div><p class="section-kicker">Maintenance</p><h2>Log service</h2></div></div>
@@ -906,45 +1166,16 @@ class FleetCareHandler(BaseHTTPRequestHandler):
               {render_fuel_form(vehicles)}
             </section>
 
-            <section class="{tab_panel_classes('alerts', active_tab, 'panel')}" id="reminders" data-tab-section="alerts" {"hidden" if active_tab != "alerts" else ""}>
-              <div class="panel-header"><div><p class="section-kicker">Reminders</p><h2>Create alert reminder</h2></div></div>
-              {render_reminder_form(vehicles)}
-            </section>
+            {alerts_form_panel}
 
-            <section class="{tab_panel_classes('vehicles', active_tab, 'panel span-two')}" data-tab-section="vehicles" {"hidden" if active_tab != "vehicles" or active_vehicle_view != "overview" else ""}>
-              <div class="panel-header"><div><p class="section-kicker">Current state</p><h2>Vehicles</h2></div></div>
-              <div class="stack-list">{render_vehicles(vehicles)}</div>
-            </section>
+            {vehicles_list_panel}
 
-            <section class="{tab_panel_classes('vehicles', active_tab, 'panel span-two')}" data-tab-section="vehicles" {"hidden" if active_tab != "vehicles" or active_vehicle_view != "capture" else ""}>
-              <div class="panel-header"><div><p class="section-kicker">GPS</p><h2>Recent location history</h2></div></div>
-              <div class="stack-list">{render_gps_logs(gps_logs)}</div>
-            </section>
+            {gps_history_panel}
 
-            <section class="{tab_panel_classes('vehicles', active_tab, 'panel span-two')}" id="trip-history" data-tab-section="vehicles" {"hidden" if active_tab != "vehicles" or active_vehicle_view not in {"trips", "history"} else ""}>
-              <div class="panel-header"><div><p class="section-kicker">Trips</p><h2>Trip history and routes</h2></div></div>
-              <div class="stack-list">{render_trip_history(trips)}</div>
-            </section>
+            {trip_history_panel}
 
-            <section class="{tab_panel_classes('drivers', active_tab, 'panel span-two')}" data-tab-section="drivers" {"hidden" if active_tab != "drivers" else ""}>
-              <div class="panel-header"><div><p class="section-kicker">Current state</p><h2>Drivers</h2></div></div>
-              <div class="stack-list">{render_drivers(drivers)}</div>
-            </section>
-
-            <section class="{tab_panel_classes('assignments', active_tab, 'panel span-two')}" data-tab-section="assignments" {"hidden" if active_tab != "assignments" else ""}>
-              <div class="panel-header"><div><p class="section-kicker">Assignments</p><h2>Driver assignments</h2></div></div>
-              <div class="stack-list">{render_assignments(assignments)}</div>
-            </section>
-
-            <section class="{tab_panel_classes('maintenance', active_tab, 'panel span-two')}" data-tab-section="maintenance" {"hidden" if active_tab != "maintenance" else ""}>
-              <div class="panel-header"><div><p class="section-kicker">History</p><h2>Maintenance history</h2></div></div>
-              <div class="stack-list">{render_maintenance_logs(maintenance)}</div>
-            </section>
-
-            <section class="{tab_panel_classes('fuel', active_tab, 'panel span-two')}" data-tab-section="fuel" {"hidden" if active_tab != "fuel" else ""}>
-              <div class="panel-header"><div><p class="section-kicker">Consumption</p><h2>Fuel history</h2></div></div>
-              <div class="stack-list">{render_fuel_logs(fuel_logs)}</div>
-            </section>
+            {driver_state_panels}
+            {history_panels}
           </main>
         </div>
         <script>window.FLEETCARE_REMINDERS = {mobile_reminders}; window.FLEETCARE_TRIP_ROUTES = {trip_routes}; window.FLEETCARE_TRACKING = {tracking_state};</script>
@@ -972,14 +1203,17 @@ class FleetCareHandler(BaseHTTPRequestHandler):
         user = self.require_user()
         if not user:
             return
+        if is_driver(user):
+            return self.redirect("/maintenance")
 
         query = parse_qs(route.query)
         vehicle_id = query.get("vehicle_id", [""])[0]
         start_date, end_date, report_period = parse_report_period(query)
 
         with get_connection() as connection:
+            scope_id = company_scope_user_id(user)
             vehicle_filter = ""
-            params = [user["id"]]
+            params = [scope_id]
             if vehicle_id:
                 vehicle_filter = " AND v.id = ?"
                 params.append(int(vehicle_id))
@@ -1166,7 +1400,7 @@ def render_brand_lockup(compact=False):
     subtitle = f'<span class="brand-tag">{h(APP_TAGLINE)}</span>' if not compact else ""
     return f"""
     <div class="{brand_class}">
-      <span class="brand-mark" aria-hidden="true">RS</span>
+      <span class="brand-mark" aria-hidden="true">RG</span>
       <div class="brand-copy">
         <span class="brand-name">{h(APP_BRAND)}</span>
         {subtitle}
@@ -1183,6 +1417,113 @@ def section_url(tab_name, vehicle_view=None, anchor=None):
     query = f"?{urlencode(params)}" if params else ""
     suffix = f"#{anchor}" if anchor else ""
     return f"{base}{query}{suffix}"
+
+
+def is_driver(user):
+    return row_value(user, "role") == "driver"
+
+
+def is_owner(user):
+    return not is_driver(user)
+
+
+def company_scope_user_id(user):
+    return row_value(user, "owner_user_id") or row_value(user, "id")
+
+
+def actor_label(user):
+    role_label = "driver" if is_driver(user) else "owner"
+    return f'{row_value(user, "email")} ({role_label})'
+
+
+def allowed_tabs_for_user(user):
+    if is_driver(user):
+        return [("vehicles", "Vehicles"), ("maintenance", "Maintenance"), ("fuel", "Fuel")]
+    return [
+        ("vehicles", "Vehicles"),
+        ("drivers", "Drivers"),
+        ("assignments", "Assignments"),
+        ("maintenance", "Maintenance"),
+        ("fuel", "Fuel"),
+        ("alerts", "Alerts"),
+    ]
+
+
+def normalize_tab_for_role(tab_name, user):
+    allowed = {tab for tab, _label in allowed_tabs_for_user(user)}
+    return tab_name if tab_name in allowed else ("vehicles" if is_driver(user) else "vehicles")
+
+
+def allowed_vehicle_views_for_user(user):
+    if is_driver(user):
+        return [("overview", "Overview"), ("capture", "GPS capture"), ("trips", "Trips")]
+    return [
+        ("overview", "Overview"),
+        ("add", "Add vehicle"),
+        ("capture", "GPS capture"),
+        ("trips", "Trips"),
+        ("history", "History"),
+    ]
+
+
+def normalize_vehicle_view_for_role(view_name, user):
+    allowed = {view for view, _label in allowed_vehicle_views_for_user(user)}
+    return view_name if view_name in allowed else "overview"
+
+
+def assigned_vehicle_id_list(connection, user):
+    driver_profile_id = row_value(user, "driver_profile_id")
+    if not is_driver(user) or not driver_profile_id:
+        return []
+    rows = connection.execute(
+        """
+        SELECT vehicle_id
+        FROM assignments
+        WHERE user_id = ? AND driver_id = ? AND active = 1
+        ORDER BY created_at DESC
+        """,
+        (company_scope_user_id(user), driver_profile_id),
+    ).fetchall()
+    return [row["vehicle_id"] for row in rows]
+
+
+def build_vehicle_scope_clause(column_name, vehicle_ids, owner_mode):
+    if owner_mode or not vehicle_ids:
+        return "", []
+    placeholders = ", ".join("?" for _ in vehicle_ids)
+    return f" AND {column_name} IN ({placeholders})", list(vehicle_ids)
+
+
+def build_driver_assignment_scope(user):
+    if not is_driver(user) or not row_value(user, "driver_profile_id"):
+        return "", []
+    return " AND a.driver_id = ?", [row_value(user, "driver_profile_id")]
+
+
+def fetch_owner_user(connection, user):
+    owner_id = company_scope_user_id(user)
+    return connection.execute(
+        """
+        SELECT id, company_name, email, alert_email, alert_sms_email
+        FROM users
+        WHERE id = ?
+        """,
+        (owner_id,),
+    ).fetchone()
+
+
+def notify_company_event(user, subject, body):
+    try:
+        with get_connection() as connection:
+            owner = fetch_owner_user(connection, user)
+        send_owner_notification(
+            row_value(owner, "alert_email") or row_value(owner, "email"),
+            row_value(owner, "alert_sms_email"),
+            subject,
+            body,
+        )
+    except Exception as error:
+        print(f"Owner notification failed: {error}")
 
 
 def render_stat(label, value):
@@ -1202,6 +1543,17 @@ def render_driver_options(drivers):
     if not drivers:
         return '<option value="">Add a driver first</option>'
     return "".join(f'<option value="{driver["id"]}">{h(driver["name"])}</option>' for driver in drivers)
+
+
+def render_notification_settings(user):
+    return f"""
+    <form method="post" action="/account/notifications" class="form-grid">
+      <label><span>Owner alert email</span><input type="email" name="alert_email" value="{h(row_value(user, 'alert_email') or row_value(user, 'email') or '')}" required></label>
+      <label><span>Text message email gateway</span><input type="email" name="alert_sms_email" value="{h(row_value(user, 'alert_sms_email') or '')}"></label>
+      <p class="muted full-span">Use the optional text-message field only if your phone carrier gives you an email-to-text address.</p>
+      <button type="submit" class="primary-btn">Save notification settings</button>
+    </form>
+    """
 
 
 def render_assignment_form(vehicles, drivers):
@@ -1410,7 +1762,7 @@ def render_alerts(alerts):
     )
 
 
-def render_vehicles(vehicles):
+def render_vehicles(vehicles, can_manage=True):
     if not vehicles:
         return '<div class="empty-state">No vehicles yet.</div>'
     return "".join(
@@ -1427,33 +1779,39 @@ def render_vehicles(vehicles):
           <div class="muted">{h(vehicle['model'] or 'Model not set')} {('- ' + str(vehicle['year'])) if vehicle['year'] else ''}</div>
           <div class="muted">{vehicle['odometer']} km</div>
           {render_vehicle_location(vehicle)}
-          <details class="edit-box">
-            <summary>Edit vehicle</summary>
-            <form method="post" action="/vehicles/update" class="form-grid compact-form">
-              <input type="hidden" name="vehicle_id" value="{vehicle['id']}">
-              <label><span>Name</span><input type="text" name="name" value="{h(vehicle['name'])}" required></label>
-              <label><span>Plate</span><input type="text" name="plate" value="{h(vehicle['plate'])}" required></label>
-              <label><span>Model</span><input type="text" name="model" value="{h(vehicle['model'] or '')}"></label>
-              <label><span>Year</span><input type="number" name="year" min="1990" max="2100" value="{h(vehicle['year'] or '')}"></label>
-              <label><span>Odometer</span><input type="number" name="odometer" min="0" value="{vehicle['odometer']}" required></label>
-              <label>
-                <span>Status</span>
-                <select name="status">
-                  {render_status_options(vehicle['status'], ['Active', 'In service', 'Inactive'])}
-                </select>
-              </label>
-              {render_upload_field("Vehicle photo", f"vehicle-photo-{vehicle['id']}", "photo_name", "photo_data", "image/*", capture=True, existing_name=row_value(vehicle, 'photo_name'), existing_data=row_value(vehicle, 'photo_data'))}
-              <button type="submit" class="primary-btn">Save changes</button>
-            </form>
-            <form method="post" action="/vehicles/delete" class="delete-form" onsubmit="return confirm('Delete this vehicle and its related records?');">
-              <input type="hidden" name="vehicle_id" value="{vehicle['id']}">
-              <button type="submit" class="danger-btn">Delete vehicle</button>
-            </form>
-          </details>
+          {render_vehicle_edit_box(vehicle) if can_manage else ''}
         </article>
         """
         for vehicle in vehicles
     )
+
+
+def render_vehicle_edit_box(vehicle):
+    return f"""
+    <details class="edit-box">
+      <summary>Edit vehicle</summary>
+      <form method="post" action="/vehicles/update" class="form-grid compact-form">
+        <input type="hidden" name="vehicle_id" value="{vehicle['id']}">
+        <label><span>Name</span><input type="text" name="name" value="{h(vehicle['name'])}" required></label>
+        <label><span>Plate</span><input type="text" name="plate" value="{h(vehicle['plate'])}" required></label>
+        <label><span>Model</span><input type="text" name="model" value="{h(vehicle['model'] or '')}"></label>
+        <label><span>Year</span><input type="number" name="year" min="1990" max="2100" value="{h(vehicle['year'] or '')}"></label>
+        <label><span>Odometer</span><input type="number" name="odometer" min="0" value="{vehicle['odometer']}" required></label>
+        <label>
+          <span>Status</span>
+          <select name="status">
+            {render_status_options(vehicle['status'], ['Active', 'In service', 'Inactive'])}
+          </select>
+        </label>
+        {render_upload_field("Vehicle photo", f"vehicle-photo-{vehicle['id']}", "photo_name", "photo_data", "image/*", capture=True, existing_name=row_value(vehicle, 'photo_name'), existing_data=row_value(vehicle, 'photo_data'))}
+        <button type="submit" class="primary-btn">Save changes</button>
+      </form>
+      <form method="post" action="/vehicles/delete" class="delete-form" onsubmit="return confirm('Delete this vehicle and its related records?');">
+        <input type="hidden" name="vehicle_id" value="{vehicle['id']}">
+        <button type="submit" class="danger-btn">Delete vehicle</button>
+      </form>
+    </details>
+    """
 
 
 def render_drivers(drivers):
@@ -1470,6 +1828,7 @@ def render_drivers(drivers):
             <strong>{h(driver['license_number'] or 'No license number')}</strong>
           </div>
           <div class="muted">{h(driver['phone'] or 'No phone')} | {h(driver['email'] or 'No email')}</div>
+          <div class="muted">{h(row_value(driver, 'login_email') or 'No app login yet')}</div>
           <details class="edit-box">
             <summary>Edit driver</summary>
             <form method="post" action="/drivers/update" class="form-grid compact-form">
