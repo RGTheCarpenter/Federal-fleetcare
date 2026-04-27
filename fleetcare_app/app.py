@@ -1728,16 +1728,19 @@ def render_tracking_status(active_trip, gps_logs):
         </div>
       </div>
       <div class="flash error tracking-error" data-tracking-error hidden></div>
-      <div class="tracking-tips">
-        <div class="tracking-tip">
-          <strong>Browser mode</strong>
-          <span>Manual capture and trip logging work through the live {h(APP_BRAND)} link.</span>
+      <details class="tracking-dropdown">
+        <summary>Open tracking details</summary>
+        <div class="tracking-tips">
+          <div class="tracking-tip">
+            <strong>Browser mode</strong>
+            <span>Manual capture and trip logging work through the live {h(APP_BRAND)} link.</span>
+          </div>
+          <div class="tracking-tip">
+            <strong>Android app mode</strong>
+            <span>The wrapper is now prepared for location permissions, notifications, and the release paperwork needed for deeper background tracking.</span>
+          </div>
         </div>
-        <div class="tracking-tip">
-          <strong>Android app mode</strong>
-          <span>The wrapper is now prepared for location permissions, notifications, and the release paperwork needed for deeper background tracking.</span>
-        </div>
-      </div>
+      </details>
     </div>
     """
 

@@ -483,6 +483,32 @@ textarea {
   gap: 12px;
 }
 
+.tracking-dropdown summary {
+  cursor: pointer;
+  list-style: none;
+  color: var(--accent-strong);
+  font-weight: 700;
+}
+
+.tracking-dropdown summary::-webkit-details-marker {
+  display: none;
+}
+
+.tracking-dropdown summary::after {
+  content: "Show more";
+  margin-left: 10px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.tracking-dropdown[open] summary::after {
+  content: "Hide";
+}
+
+.tracking-dropdown .tracking-tips {
+  margin-top: 12px;
+}
+
 .tracking-status__hero {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
