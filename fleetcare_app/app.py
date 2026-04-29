@@ -98,10 +98,22 @@ class FleetCareHandler(BaseHTTPRequestHandler):
             return self.handle_assignment_add(user, form)
         if path == "/maintenance/add":
             return self.handle_maintenance_add(user, form)
+        if path == "/maintenance/update":
+            return self.handle_maintenance_update(user, form)
+        if path == "/maintenance/delete":
+            return self.handle_maintenance_delete(user, form)
         if path == "/fuel/add":
             return self.handle_fuel_add(user, form)
+        if path == "/fuel/update":
+            return self.handle_fuel_update(user, form)
+        if path == "/fuel/delete":
+            return self.handle_fuel_delete(user, form)
         if path == "/reminders/add":
             return self.handle_reminder_add(user, form)
+        if path == "/reminders/update":
+            return self.handle_reminder_update(user, form)
+        if path == "/reminders/delete":
+            return self.handle_reminder_delete(user, form)
         if path == "/gps/add":
             return self.handle_gps_add(user, form)
         if path == "/trips/start":
@@ -427,6 +439,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
         vehicle_id = int(form.get("vehicle_id") or 0)
         odometer = int(form.get("odometer") or 0)
         scope_id = company_scope_user_id(user)
+        return_vehicle_id = form.get("return_vehicle_id") or vehicle_id
 
         with get_connection() as connection:
             connection.execute(
@@ -466,7 +479,63 @@ class FleetCareHandler(BaseHTTPRequestHandler):
             "Maintenance logged",
             f'{actor_label(user)} logged maintenance "{form.get("service_type", "").strip()}" for vehicle ID {vehicle_id} on {form.get("service_date", "").strip()}.',
         )
-        self.redirect(section_url("maintenance", anchor="maintenance"))
+        self.redirect(section_url("maintenance", selected_vehicle_id=return_vehicle_id, anchor="maintenance"))
+
+    def handle_maintenance_update(self, user, form):
+        maintenance_id = int(form.get("maintenance_id") or 0)
+        vehicle_id = int(form.get("vehicle_id") or 0)
+        odometer = int(form.get("odometer") or 0)
+        scope_id = company_scope_user_id(user)
+        return_vehicle_id = form.get("return_vehicle_id") or vehicle_id
+
+        with get_connection() as connection:
+            connection.execute(
+                """
+                UPDATE maintenance_logs
+                SET vehicle_id = ?, service_type = ?, service_date = ?, odometer = ?, cost = ?, notes = ?, next_due_date = ?, next_due_odometer = ?, attachment_name = ?, attachment_data = ?
+                WHERE id = ? AND user_id = ?
+                """,
+                (
+                    vehicle_id,
+                    form.get("service_type", ""),
+                    form.get("service_date", ""),
+                    odometer,
+                    float(form.get("cost") or 0),
+                    form.get("notes", ""),
+                    form.get("next_due_date") or None,
+                    int(form.get("next_due_odometer") or 0) or None,
+                    clean_upload_name(form.get("attachment_name", "")),
+                    clean_upload_data(form.get("attachment_data", "")),
+                    maintenance_id,
+                    scope_id,
+                ),
+            )
+            connection.execute(
+                """
+                UPDATE vehicles
+                SET odometer = CASE
+                    WHEN odometer < ? THEN ?
+                    ELSE odometer
+                END
+                WHERE id = ? AND user_id = ?
+                """,
+                (odometer, odometer, vehicle_id, scope_id),
+            )
+
+        self.redirect(section_url("maintenance", selected_vehicle_id=return_vehicle_id, anchor="maintenance-history"))
+
+    def handle_maintenance_delete(self, user, form):
+        maintenance_id = int(form.get("maintenance_id") or 0)
+        scope_id = company_scope_user_id(user)
+        return_vehicle_id = form.get("return_vehicle_id") or ""
+
+        with get_connection() as connection:
+            connection.execute(
+                "DELETE FROM maintenance_logs WHERE id = ? AND user_id = ?",
+                (maintenance_id, scope_id),
+            )
+
+        self.redirect(section_url("maintenance", selected_vehicle_id=return_vehicle_id, anchor="maintenance-history"))
 
     def handle_fuel_add(self, user, form):
         vehicle_id = int(form.get("vehicle_id") or 0)
@@ -477,6 +546,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
         price_per_liter = total_cost / liters if liters else 0
         full_tank = 1 if form.get("full_tank") == "on" else 0
         scope_id = company_scope_user_id(user)
+        return_vehicle_id = form.get("return_vehicle_id") or vehicle_id
 
         with get_connection() as connection:
             connection.execute(
@@ -515,10 +585,71 @@ class FleetCareHandler(BaseHTTPRequestHandler):
             "Fuel log added",
             f'{actor_label(user)} logged fuel for vehicle ID {vehicle_id} on {form.get("fill_date", "").strip()} for {money(total_cost)}.',
         )
-        self.redirect(section_url("fuel", anchor="fuel"))
+        self.redirect(section_url("fuel", selected_vehicle_id=return_vehicle_id, anchor="fuel"))
+
+    def handle_fuel_update(self, user, form):
+        fuel_id = int(form.get("fuel_id") or 0)
+        vehicle_id = int(form.get("vehicle_id") or 0)
+        odometer = int(form.get("odometer") or 0)
+        gallons = float(form.get("gallons") or 0)
+        liters = gallons_to_liters(gallons)
+        total_cost = float(form.get("total_cost") or 0)
+        price_per_liter = total_cost / liters if liters else 0
+        full_tank = 1 if form.get("full_tank") == "on" else 0
+        scope_id = company_scope_user_id(user)
+        return_vehicle_id = form.get("return_vehicle_id") or vehicle_id
+
+        with get_connection() as connection:
+            connection.execute(
+                """
+                UPDATE fuel_logs
+                SET vehicle_id = ?, fill_date = ?, odometer = ?, liters = ?, total_cost = ?, price_per_liter = ?, station = ?, full_tank = ?, notes = ?
+                WHERE id = ? AND user_id = ?
+                """,
+                (
+                    vehicle_id,
+                    form.get("fill_date", ""),
+                    odometer,
+                    liters,
+                    total_cost,
+                    price_per_liter,
+                    form.get("station", ""),
+                    full_tank,
+                    form.get("notes", ""),
+                    fuel_id,
+                    scope_id,
+                ),
+            )
+            connection.execute(
+                """
+                UPDATE vehicles
+                SET odometer = CASE
+                    WHEN odometer < ? THEN ?
+                    ELSE odometer
+                END
+                WHERE id = ? AND user_id = ?
+                """,
+                (odometer, odometer, vehicle_id, scope_id),
+            )
+
+        self.redirect(section_url("fuel", selected_vehicle_id=return_vehicle_id, anchor="fuel-history"))
+
+    def handle_fuel_delete(self, user, form):
+        fuel_id = int(form.get("fuel_id") or 0)
+        scope_id = company_scope_user_id(user)
+        return_vehicle_id = form.get("return_vehicle_id") or ""
+
+        with get_connection() as connection:
+            connection.execute(
+                "DELETE FROM fuel_logs WHERE id = ? AND user_id = ?",
+                (fuel_id, scope_id),
+            )
+
+        self.redirect(section_url("fuel", selected_vehicle_id=return_vehicle_id, anchor="fuel-history"))
 
     def handle_reminder_add(self, user, form):
         scope_id = company_scope_user_id(user)
+        return_vehicle_id = form.get("return_vehicle_id") or form.get("vehicle_id") or ""
         with get_connection() as connection:
             connection.execute(
                 """
@@ -536,7 +667,47 @@ class FleetCareHandler(BaseHTTPRequestHandler):
             )
 
         notify_company_event(user, "Reminder created", f'{actor_label(user)} created reminder "{form.get("title", "").strip()}".')
-        self.redirect(section_url("alerts", anchor="reminders"))
+        self.redirect(section_url("alerts", selected_vehicle_id=return_vehicle_id, anchor="reminders"))
+
+    def handle_reminder_update(self, user, form):
+        reminder_id = int(form.get("reminder_id") or 0)
+        vehicle_id = int(form.get("vehicle_id") or 0)
+        scope_id = company_scope_user_id(user)
+        return_vehicle_id = form.get("return_vehicle_id") or vehicle_id
+
+        with get_connection() as connection:
+            connection.execute(
+                """
+                UPDATE reminders
+                SET vehicle_id = ?, title = ?, due_date = ?, due_odometer = ?, notes = ?, status = ?
+                WHERE id = ? AND user_id = ?
+                """,
+                (
+                    vehicle_id,
+                    form.get("title", ""),
+                    form.get("due_date") or None,
+                    int(form.get("due_odometer") or 0) or None,
+                    form.get("notes", ""),
+                    form.get("status", "Open"),
+                    reminder_id,
+                    scope_id,
+                ),
+            )
+
+        self.redirect(section_url("alerts", selected_vehicle_id=return_vehicle_id, anchor="reminder-history"))
+
+    def handle_reminder_delete(self, user, form):
+        reminder_id = int(form.get("reminder_id") or 0)
+        scope_id = company_scope_user_id(user)
+        return_vehicle_id = form.get("return_vehicle_id") or ""
+
+        with get_connection() as connection:
+            connection.execute(
+                "DELETE FROM reminders WHERE id = ? AND user_id = ?",
+                (reminder_id, scope_id),
+            )
+
+        self.redirect(section_url("alerts", selected_vehicle_id=return_vehicle_id, anchor="reminder-history"))
 
     def handle_gps_add(self, user, form):
         vehicle_id = int(form.get("vehicle_id") or 0)
@@ -743,6 +914,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                     """.replace("{vehicle_scope}", vehicle_scope[0]),
                     (scope_id, *vehicle_scope[1]),
                 ).fetchall()
+                selected_vehicle_id = get_selected_vehicle_id(route, vehicles)
                 drivers = connection.execute(
                     """
                     SELECT d.*, du.email AS login_email
@@ -782,6 +954,8 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                     """.replace("{maintenance_scope}", maintenance_scope[0]),
                     (scope_id, *maintenance_scope[1]),
                 ).fetchall()
+                if selected_vehicle_id:
+                    maintenance = [item for item in maintenance if str(item["vehicle_id"]) == str(selected_vehicle_id)]
                 fuel_scope = build_vehicle_scope_clause("f.vehicle_id", assigned_vehicle_ids, owner_mode)
                 fuel_logs = connection.execute(
                     """
@@ -795,6 +969,8 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                     """.replace("{fuel_scope}", fuel_scope[0]),
                     (scope_id, *fuel_scope[1]),
                 ).fetchall()
+                if selected_vehicle_id:
+                    fuel_logs = [item for item in fuel_logs if str(item["vehicle_id"]) == str(selected_vehicle_id)]
                 reminder_scope = build_vehicle_scope_clause("r.vehicle_id", assigned_vehicle_ids, owner_mode)
                 reminders = connection.execute(
                     """
@@ -807,6 +983,8 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                     """.replace("{reminder_scope}", reminder_scope[0]),
                     (scope_id, *reminder_scope[1]),
                 ).fetchall()
+                if selected_vehicle_id:
+                    reminders = [item for item in reminders if str(item["vehicle_id"]) == str(selected_vehicle_id)]
                 gps_logs = []
                 active_trip = None
                 trips = []
@@ -825,6 +1003,8 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                         """.replace("{gps_scope}", gps_scope[0]),
                         (scope_id, *gps_scope[1]),
                     ).fetchall()
+                    if selected_vehicle_id:
+                        gps_logs = [item for item in gps_logs if str(item["vehicle_id"]) == str(selected_vehicle_id)]
                     active_trip_scope = build_vehicle_scope_clause("t.vehicle_id", assigned_vehicle_ids, owner_mode)
                     active_trip = connection.execute(
                         """
@@ -838,6 +1018,8 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                         """.replace("{active_trip_scope}", active_trip_scope[0]),
                         (scope_id, *active_trip_scope[1]),
                     ).fetchone()
+                    if selected_vehicle_id and active_trip and str(active_trip["vehicle_id"]) != str(selected_vehicle_id):
+                        active_trip = None
                     trip_scope = build_vehicle_scope_clause("t.vehicle_id", assigned_vehicle_ids, owner_mode)
                     trips = connection.execute(
                         """
@@ -859,6 +1041,8 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                         """.replace("{trip_scope}", trip_scope[0]),
                         (scope_id, *trip_scope[1]),
                     ).fetchall()
+                    if selected_vehicle_id:
+                        trips = [item for item in trips if str(item["vehicle_id"]) == str(selected_vehicle_id)]
                     trip_point_scope = build_vehicle_scope_clause("vehicle_id", assigned_vehicle_ids, owner_mode)
                     trip_points = connection.execute(
                         """
@@ -875,6 +1059,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
 
             alerts = collect_alerts(reminders, assignments)
             stats = build_stats(vehicles, maintenance, fuel_logs, reminders)
+            vehicle_action_panel = render_vehicle_action_panel(vehicles, selected_vehicle_id, active_tab, owner_mode)
             mobile_reminders = json.dumps(build_mobile_reminders(reminders), separators=(",", ":"))
             trip_routes = json.dumps(build_trip_routes(trip_points), separators=(",", ":"))
             tracking_state = json.dumps(build_tracking_payload(active_trip, gps_logs), separators=(",", ":"))
@@ -1034,7 +1219,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
             )
             alerts_form_panel = (
                 f"""
-            {render_collapsible_panel(tab_panel_classes('alerts', active_tab, 'panel'), 'reminders', 'alerts', active_tab != 'alerts', 'Reminders', 'Create alert reminder', render_reminder_form(vehicles), summary_meta='Set mileage or date reminders')}
+            {render_collapsible_panel(tab_panel_classes('alerts', active_tab, 'panel'), 'reminders', 'alerts', active_tab != 'alerts', 'Reminders', 'Create alert reminder', render_reminder_form(vehicles, selected_vehicle_id), summary_meta='Set mileage or date reminders')}
 
             {render_collapsible_panel(tab_panel_classes('alerts', active_tab, 'panel'), 'notification-settings', 'alerts', active_tab != 'alerts', 'Notifications', 'Owner alerts', render_notification_settings(user), summary_meta='Update email and text notifications')}
                 """
@@ -1084,12 +1269,12 @@ class FleetCareHandler(BaseHTTPRequestHandler):
             )
             history_panels = (
                 f"""
-            <section class="{tab_panel_classes('maintenance', active_tab, 'panel span-two')}" data-tab-section="maintenance" {"hidden" if active_tab != "maintenance" else ""}>
+            <section class="{tab_panel_classes('maintenance', active_tab, 'panel span-two')}" id="maintenance-history" data-tab-section="maintenance" {"hidden" if active_tab != "maintenance" else ""}>
               <div class="panel-header"><div><p class="section-kicker">History</p><h2>Maintenance history</h2></div></div>
               <div class="stack-list">{render_maintenance_logs(maintenance)}</div>
             </section>
 
-            <section class="{tab_panel_classes('fuel', active_tab, 'panel span-two')}" data-tab-section="fuel" {"hidden" if active_tab != "fuel" else ""}>
+            <section class="{tab_panel_classes('fuel', active_tab, 'panel span-two')}" id="fuel-history" data-tab-section="fuel" {"hidden" if active_tab != "fuel" else ""}>
               <div class="panel-header"><div><p class="section-kicker">Consumption</p><h2>Fuel history</h2></div></div>
               <div class="stack-list">{render_fuel_logs(fuel_logs)}</div>
             </section>
@@ -1130,6 +1315,8 @@ class FleetCareHandler(BaseHTTPRequestHandler):
             {nav_links}
           </nav>
 
+          {vehicle_action_panel}
+
           {stats_panel}
           {alert_summary_section}
 
@@ -1160,9 +1347,9 @@ class FleetCareHandler(BaseHTTPRequestHandler):
             {drivers_panel}
             {assignments_panel}
 
-            {render_collapsible_panel(tab_panel_classes('maintenance', active_tab, 'panel'), 'maintenance', 'maintenance', active_tab != 'maintenance', 'Maintenance', 'Log service', render_maintenance_form(vehicles), summary_meta='Add maintenance work and costs')}
+            {render_collapsible_panel(tab_panel_classes('maintenance', active_tab, 'panel'), 'maintenance', 'maintenance', active_tab != 'maintenance', 'Maintenance', 'Log service', render_maintenance_form(vehicles, selected_vehicle_id), summary_meta='Add maintenance work and costs')}
 
-            {render_collapsible_panel(tab_panel_classes('fuel', active_tab, 'panel'), 'fuel', 'fuel', active_tab != 'fuel', 'Fuel', 'Log fuel fill', render_fuel_form(vehicles), summary_meta='Add fuel quantity and spend')}
+            {render_collapsible_panel(tab_panel_classes('fuel', active_tab, 'panel'), 'fuel', 'fuel', active_tab != 'fuel', 'Fuel', 'Log fuel fill', render_fuel_form(vehicles, selected_vehicle_id), summary_meta='Add fuel quantity and spend')}
 
             {alerts_form_panel}
 
@@ -1174,6 +1361,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
 
             {driver_state_panels}
             {history_panels}
+            {render_reminder_history_panel(active_tab, reminders, selected_vehicle_id) if owner_mode else ""}
           </main>
         </div>
         <script>window.FLEETCARE_REMINDERS = {mobile_reminders}; window.FLEETCARE_TRIP_ROUTES = {trip_routes}; window.FLEETCARE_TRACKING = {tracking_state};</script>
@@ -1425,14 +1613,23 @@ def render_brand_lockup(compact=False):
     """
 
 
-def section_url(tab_name, vehicle_view=None, anchor=None):
+def section_url(tab_name, vehicle_view=None, selected_vehicle_id=None, anchor=None):
     base = f"/{tab_name}"
     params = []
     if tab_name == "vehicles" and vehicle_view:
         params.append(("vehicles_view", vehicle_view))
+    if selected_vehicle_id:
+        params.append(("vehicle_id", str(selected_vehicle_id)))
     query = f"?{urlencode(params)}" if params else ""
     suffix = f"#{anchor}" if anchor else ""
     return f"{base}{query}{suffix}"
+
+
+def get_selected_vehicle_id(route, vehicles):
+    requested = parse_qs(route.query).get("vehicle_id", [""])[0]
+    if requested and any(str(vehicle["id"]) == str(requested) for vehicle in vehicles):
+        return requested
+    return str(vehicles[0]["id"]) if vehicles else ""
 
 
 def is_driver(user):
@@ -1572,6 +1769,51 @@ def render_notification_settings(user):
     """
 
 
+def render_vehicle_action_panel(vehicles, selected_vehicle_id, active_tab, owner_mode):
+    if active_tab not in {"maintenance", "fuel", "alerts"}:
+        return ""
+    if not vehicles:
+        return ""
+
+    selected_vehicle = next((vehicle for vehicle in vehicles if str(vehicle["id"]) == str(selected_vehicle_id)), None)
+    selected_label = (
+        f'{row_value(selected_vehicle, "name")} - {row_value(selected_vehicle, "plate")}'
+        if selected_vehicle
+        else "Choose a vehicle"
+    )
+    allowed_actions = [("maintenance", "Maintenance"), ("fuel", "Fuel")]
+    if owner_mode:
+        allowed_actions.append(("alerts", "Alerts"))
+    action_links = "".join(
+        f'<a class="sub-link{" is-active" if tab_name == active_tab else ""}" href="{section_url(tab_name, selected_vehicle_id=selected_vehicle_id)}">{h(label)}</a>'
+        for tab_name, label in allowed_actions
+    )
+    return f"""
+    <section class="panel vehicle-focus-panel">
+      <div class="panel-header">
+        <div>
+          <p class="section-kicker">Vehicle workflow</p>
+          <h2>Selected vehicle</h2>
+        </div>
+      </div>
+      <form method="get" action="/{active_tab}" class="vehicle-focus-form">
+        <label>
+          <span>Vehicle</span>
+          <select name="vehicle_id" required>{render_vehicle_options(vehicles, selected_vehicle_id)}</select>
+        </label>
+        <button type="submit" class="primary-btn">Use vehicle</button>
+      </form>
+      <div class="vehicle-focus-current">
+        <strong>{h(selected_label)}</strong>
+        <span class="muted">Choose the vehicle first, then jump into fuel, maintenance, or alerts.</span>
+      </div>
+      <nav class="sub-links" aria-label="Vehicle action options">
+        {action_links}
+      </nav>
+    </section>
+    """
+
+
 def render_assignment_form(vehicles, drivers):
     if not vehicles or not drivers:
         return '<div class="empty-state">Add at least one vehicle and one driver before creating assignments.</div>'
@@ -1587,12 +1829,13 @@ def render_assignment_form(vehicles, drivers):
     """
 
 
-def render_maintenance_form(vehicles):
+def render_maintenance_form(vehicles, selected_vehicle_id=None):
     if not vehicles:
         return '<div class="empty-state">Add a vehicle first to log service records.</div>'
     return f"""
     <form method="post" action="/maintenance/add" class="form-grid">
-      <label><span>Vehicle</span><select name="vehicle_id" required>{render_vehicle_options(vehicles)}</select></label>
+      <input type="hidden" name="return_vehicle_id" value="{h(selected_vehicle_id or '')}">
+      <label><span>Vehicle</span><select name="vehicle_id" required>{render_vehicle_options(vehicles, selected_vehicle_id)}</select></label>
       <label><span>Service type</span><input type="text" name="service_type" required></label>
       <label><span>Service date</span><input type="date" name="service_date" value="{date.today().isoformat()}" required></label>
       <label><span>Odometer</span><input type="number" name="odometer" min="0" required></label>
@@ -1606,12 +1849,13 @@ def render_maintenance_form(vehicles):
     """
 
 
-def render_fuel_form(vehicles):
+def render_fuel_form(vehicles, selected_vehicle_id=None):
     if not vehicles:
         return '<div class="empty-state">Add a vehicle first to log fuel usage.</div>'
     return f"""
     <form method="post" action="/fuel/add" class="form-grid">
-      <label><span>Vehicle</span><select name="vehicle_id" required>{render_vehicle_options(vehicles)}</select></label>
+      <input type="hidden" name="return_vehicle_id" value="{h(selected_vehicle_id or '')}">
+      <label><span>Vehicle</span><select name="vehicle_id" required>{render_vehicle_options(vehicles, selected_vehicle_id)}</select></label>
       <label><span>Fill date</span><input type="date" name="fill_date" value="{date.today().isoformat()}" required></label>
       <label><span>Odometer</span><input type="number" name="odometer" min="0" required></label>
       <label><span>Gallons</span><input type="number" name="gallons" min="0" step="0.01" required></label>
@@ -1624,12 +1868,13 @@ def render_fuel_form(vehicles):
     """
 
 
-def render_reminder_form(vehicles):
+def render_reminder_form(vehicles, selected_vehicle_id=None):
     if not vehicles:
         return '<div class="empty-state">Add a vehicle first to create reminders.</div>'
     return f"""
     <form method="post" action="/reminders/add" class="form-grid">
-      <label><span>Vehicle</span><select name="vehicle_id" required>{render_vehicle_options(vehicles)}</select></label>
+      <input type="hidden" name="return_vehicle_id" value="{h(selected_vehicle_id or '')}">
+      <label><span>Vehicle</span><select name="vehicle_id" required>{render_vehicle_options(vehicles, selected_vehicle_id)}</select></label>
       <label><span>Title</span><input type="text" name="title" required></label>
       <label><span>Due date</span><input type="date" name="due_date"></label>
       <label><span>Due odometer</span><input type="number" name="due_odometer" min="0"></label>
@@ -1843,6 +2088,60 @@ def render_vehicle_edit_box(vehicle):
     """
 
 
+def render_maintenance_edit_box(item):
+    return f"""
+    <details class="edit-box">
+      <summary>Edit service</summary>
+      <form method="post" action="/maintenance/update" class="form-grid compact-form">
+        <input type="hidden" name="maintenance_id" value="{item['id']}">
+        <input type="hidden" name="return_vehicle_id" value="{item['vehicle_id']}">
+        <input type="hidden" name="vehicle_id" value="{item['vehicle_id']}">
+        <label><span>Service type</span><input type="text" name="service_type" value="{h(item['service_type'])}" required></label>
+        <label><span>Service date</span><input type="date" name="service_date" value="{h(item['service_date'])}" required></label>
+        <label><span>Odometer</span><input type="number" name="odometer" min="0" value="{item['odometer']}" required></label>
+        <label><span>Cost</span><input type="number" name="cost" min="0" step="0.01" value="{item['cost']}" required></label>
+        <label><span>Next due date</span><input type="date" name="next_due_date" value="{h(item['next_due_date'] or '')}"></label>
+        <label><span>Next due odometer</span><input type="number" name="next_due_odometer" min="0" value="{h(item['next_due_odometer'] or '')}"></label>
+        {render_upload_field("Invoice or photo", f"maintenance-attachment-{item['id']}", "attachment_name", "attachment_data", ".pdf,image/*", existing_name=row_value(item, 'attachment_name'), existing_data=row_value(item, 'attachment_data'))}
+        <label class="full-span"><span>Notes</span><textarea name="notes" rows="3">{h(item['notes'] or '')}</textarea></label>
+        <button type="submit" class="primary-btn">Save changes</button>
+      </form>
+      <form method="post" action="/maintenance/delete" class="delete-form" onsubmit="return confirm('Delete this maintenance record?');">
+        <input type="hidden" name="maintenance_id" value="{item['id']}">
+        <input type="hidden" name="return_vehicle_id" value="{item['vehicle_id']}">
+        <button type="submit" class="danger-btn">Delete service</button>
+      </form>
+    </details>
+    """
+
+
+def render_fuel_edit_box(item):
+    gallons_value = format_gallons(item["liters"])
+    return f"""
+    <details class="edit-box">
+      <summary>Edit fuel log</summary>
+      <form method="post" action="/fuel/update" class="form-grid compact-form">
+        <input type="hidden" name="fuel_id" value="{item['id']}">
+        <input type="hidden" name="return_vehicle_id" value="{item['vehicle_id']}">
+        <input type="hidden" name="vehicle_id" value="{item['vehicle_id']}">
+        <label><span>Fill date</span><input type="date" name="fill_date" value="{h(item['fill_date'])}" required></label>
+        <label><span>Odometer</span><input type="number" name="odometer" min="0" value="{item['odometer']}" required></label>
+        <label><span>Gallons</span><input type="number" name="gallons" min="0" step="0.01" value="{gallons_value}" required></label>
+        <label><span>Total cost</span><input type="number" name="total_cost" min="0" step="0.01" value="{item['total_cost']}" required></label>
+        <label><span>Station</span><input type="text" name="station" value="{h(item['station'] or '')}"></label>
+        <label class="checkbox-label"><input type="checkbox" name="full_tank" {"checked" if item['full_tank'] else ""}> Full tank fill</label>
+        <label class="full-span"><span>Notes</span><textarea name="notes" rows="3">{h(item['notes'] or '')}</textarea></label>
+        <button type="submit" class="primary-btn">Save changes</button>
+      </form>
+      <form method="post" action="/fuel/delete" class="delete-form" onsubmit="return confirm('Delete this fuel log?');">
+        <input type="hidden" name="fuel_id" value="{item['id']}">
+        <input type="hidden" name="return_vehicle_id" value="{item['vehicle_id']}">
+        <button type="submit" class="danger-btn">Delete fuel log</button>
+      </form>
+    </details>
+    """
+
+
 def render_drivers(drivers):
     if not drivers:
         return '<div class="empty-state">No drivers yet.</div>'
@@ -1929,6 +2228,7 @@ def render_maintenance_logs(maintenance):
           </div>
           <div class="muted">{h(item['service_date'])} | {item['odometer']} km</div>
           <div class="muted">{h(item['notes'] or 'No notes')}</div>
+          {render_maintenance_edit_box(item)}
         </article>
         """
         for item in maintenance
@@ -1950,9 +2250,41 @@ def render_fuel_logs(fuel_logs):
           </div>
           <div class="muted">{h(item['fill_date'])} | {format_gallons(item['liters'])} gal | {item['odometer']} km</div>
           <div class="muted">{h(item['station'] or 'Station not set')} | {'Full tank' if item['full_tank'] else 'Partial fill'}</div>
+          {render_fuel_edit_box(item)}
         </article>
         """
         for item in fuel_logs
+    )
+
+
+def render_reminder_history_panel(active_tab, reminders, selected_vehicle_id=None):
+    return f"""
+    <section class="{tab_panel_classes('alerts', active_tab, 'panel span-two')}" id="reminder-history" data-tab-section="alerts" {"hidden" if active_tab != "alerts" else ""}>
+      <div class="panel-header"><div><p class="section-kicker">Reminder history</p><h2>Alert reminders</h2></div></div>
+      <div class="stack-list">{render_reminders(reminders, selected_vehicle_id)}</div>
+    </section>
+    """
+
+
+def render_reminders(reminders, selected_vehicle_id=None):
+    if not reminders:
+        return '<div class="empty-state">No alert reminders yet.</div>'
+    return "".join(
+        f"""
+        <article class="list-item">
+          <div class="item-head">
+            <div class="item-title-row">
+              <div class="item-title">{h(item['title'])}</div>
+              <span class="badge {'active' if item['status'] == 'Open' else 'warning'}">{h(item['status'])}</span>
+            </div>
+            <strong>{h(item['vehicle_name'])}</strong>
+          </div>
+          <div class="muted">{h(item['due_date'] or 'No due date')} | {h(item['due_odometer'] or 'No odometer target')}</div>
+          <div class="muted">{h(item['notes'] or 'No notes')}</div>
+          {render_reminder_edit_box(item, selected_vehicle_id)}
+        </article>
+        """
+        for item in reminders
     )
 
 
@@ -1976,6 +2308,35 @@ def render_gps_logs(gps_logs):
         """
         for item in gps_logs
     )
+
+
+def render_reminder_edit_box(item, selected_vehicle_id=None):
+    return f"""
+    <details class="edit-box">
+      <summary>Edit reminder</summary>
+      <form method="post" action="/reminders/update" class="form-grid compact-form">
+        <input type="hidden" name="reminder_id" value="{item['id']}">
+        <input type="hidden" name="vehicle_id" value="{item['vehicle_id']}">
+        <input type="hidden" name="return_vehicle_id" value="{h(selected_vehicle_id or item['vehicle_id'])}">
+        <label><span>Title</span><input type="text" name="title" value="{h(item['title'])}" required></label>
+        <label>
+          <span>Status</span>
+          <select name="status">
+            {render_status_options(item['status'], ['Open', 'Closed'])}
+          </select>
+        </label>
+        <label><span>Due date</span><input type="date" name="due_date" value="{h(item['due_date'] or '')}"></label>
+        <label><span>Due odometer</span><input type="number" name="due_odometer" min="0" value="{h(item['due_odometer'] or '')}"></label>
+        <label class="full-span"><span>Notes</span><textarea name="notes" rows="3">{h(item['notes'] or '')}</textarea></label>
+        <button type="submit" class="primary-btn">Save changes</button>
+      </form>
+      <form method="post" action="/reminders/delete" class="delete-form" onsubmit="return confirm('Delete this reminder?');">
+        <input type="hidden" name="reminder_id" value="{item['id']}">
+        <input type="hidden" name="return_vehicle_id" value="{h(selected_vehicle_id or item['vehicle_id'])}">
+        <button type="submit" class="danger-btn">Delete reminder</button>
+      </form>
+    </details>
+    """
 
 
 def collect_alerts(reminders, assignments):
