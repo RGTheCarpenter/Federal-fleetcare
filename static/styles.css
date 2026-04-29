@@ -474,9 +474,13 @@ a {
 
 .vehicle-focus-form {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   align-items: end;
+}
+
+.vehicle-focus-hint {
+  margin: 0;
 }
 
 .vehicle-focus-current {

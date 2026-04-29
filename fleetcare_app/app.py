@@ -1818,9 +1818,9 @@ def render_vehicle_action_panel(vehicles, selected_vehicle_id, active_tab, owner
       <form method="get" action="/{active_tab}" class="vehicle-focus-form">
         <label>
           <span>Vehicle</span>
-          <select name="vehicle_id" required>{render_vehicle_options(vehicles, selected_vehicle_id)}</select>
+          <select name="vehicle_id" required onchange="this.form.submit()">{render_vehicle_options(vehicles, selected_vehicle_id)}</select>
         </label>
-        <button type="submit" class="primary-btn">Use vehicle</button>
+        <p class="muted vehicle-focus-hint">Changing the vehicle updates this workspace automatically.</p>
       </form>
         """
         if vehicles
