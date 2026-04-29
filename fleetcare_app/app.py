@@ -1770,7 +1770,7 @@ def render_notification_settings(user):
 
 
 def render_vehicle_action_panel(vehicles, selected_vehicle_id, active_tab, owner_mode):
-    if active_tab not in {"maintenance", "fuel", "alerts"}:
+    if active_tab not in {"vehicles", "maintenance", "fuel", "alerts"}:
         return ""
     if not vehicles:
         return ""
@@ -1781,7 +1781,7 @@ def render_vehicle_action_panel(vehicles, selected_vehicle_id, active_tab, owner
         if selected_vehicle
         else "Choose a vehicle"
     )
-    allowed_actions = [("maintenance", "Maintenance"), ("fuel", "Fuel")]
+    allowed_actions = [("vehicles", "Vehicle workspace"), ("maintenance", "Maintenance"), ("fuel", "Fuel")]
     if owner_mode:
         allowed_actions.append(("alerts", "Alerts"))
     action_links = "".join(
