@@ -515,6 +515,24 @@ textarea {
   padding-top: 10px;
 }
 
+.item-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-start;
+  margin-top: 8px;
+}
+
+.item-actions .edit-box {
+  flex: 1 1 260px;
+  margin-top: 0;
+}
+
+.inline-delete-form {
+  margin-top: 0;
+  flex: 0 0 auto;
+}
+
 .upload-field {
   display: grid;
   gap: 8px;

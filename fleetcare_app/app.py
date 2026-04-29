@@ -2097,11 +2097,23 @@ def render_vehicles(vehicles, can_manage=True):
           <div class="muted">{h(vehicle['model'] or 'Model not set')} {('- ' + str(vehicle['year'])) if vehicle['year'] else ''}</div>
           <div class="muted">{vehicle['odometer']} km</div>
           {render_vehicle_location(vehicle)}
-          {render_vehicle_edit_box(vehicle) if can_manage else ''}
+          {render_vehicle_manage_box(vehicle) if can_manage else ''}
         </article>
         """
         for vehicle in vehicles
     )
+
+
+def render_vehicle_manage_box(vehicle):
+    return f"""
+    <div class="item-actions">
+      {render_vehicle_edit_box(vehicle)}
+      <form method="post" action="/vehicles/delete" class="delete-form inline-delete-form" onsubmit="return confirm('Delete this vehicle and its related records?');">
+        <input type="hidden" name="vehicle_id" value="{vehicle['id']}">
+        <button type="submit" class="danger-btn">Delete vehicle</button>
+      </form>
+    </div>
+    """
 
 
 def render_vehicle_edit_box(vehicle):
@@ -2123,10 +2135,6 @@ def render_vehicle_edit_box(vehicle):
         </label>
         {render_upload_field("Vehicle photo", f"vehicle-photo-{vehicle['id']}", "photo_name", "photo_data", "image/*", capture=True, existing_name=row_value(vehicle, 'photo_name'), existing_data=row_value(vehicle, 'photo_data'))}
         <button type="submit" class="primary-btn">Save changes</button>
-      </form>
-      <form method="post" action="/vehicles/delete" class="delete-form" onsubmit="return confirm('Delete this vehicle and its related records?');">
-        <input type="hidden" name="vehicle_id" value="{vehicle['id']}">
-        <button type="submit" class="danger-btn">Delete vehicle</button>
       </form>
     </details>
     """
