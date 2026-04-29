@@ -1132,6 +1132,53 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 if owner_mode
                 else ""
             )
+            vehicle_view_links = "".join(
+                render_subtab_link("vehicles", view_name, label, active_vehicle_view)
+                for view_name, label in visible_vehicle_views_for_user(user)
+            )
+            vehicle_workflow_links = []
+            if owner_mode:
+                vehicle_workflow_links.append(
+                    (
+                        section_url("vehicles", vehicle_view="add", selected_vehicle_id=selected_vehicle_id),
+                        "Add a vehicle",
+                        active_tab == "vehicles" and active_vehicle_view == "add",
+                    )
+                )
+            vehicle_workflow_links.extend(
+                [
+                    (
+                        section_url("maintenance", selected_vehicle_id=selected_vehicle_id),
+                        "Maintenance",
+                        active_tab == "maintenance",
+                    ),
+                    (
+                        section_url("fuel", selected_vehicle_id=selected_vehicle_id),
+                        "Fuel",
+                        active_tab == "fuel",
+                    ),
+                ]
+            )
+            if owner_mode:
+                vehicle_workflow_links.append(
+                    (
+                        section_url("alerts", selected_vehicle_id=selected_vehicle_id),
+                        "Alerts",
+                        active_tab == "alerts",
+                    )
+                )
+            vehicle_workflow_nav = "".join(
+                f'<a class="sub-link{" is-active" if is_active else ""}" href="{href}">{h(label)}</a>'
+                for href, label, is_active in vehicle_workflow_links
+            )
+            vehicle_action_panel = render_vehicle_action_panel(
+                vehicles,
+                selected_vehicle_id,
+                active_tab,
+                active_vehicle_view,
+                owner_mode,
+                vehicle_view_links,
+            )
             vehicle_add_panel = (
                 render_collapsible_panel(
                     tab_panel_classes("vehicles", active_tab, "panel"),
@@ -1334,8 +1381,9 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 </div>
               </div>
               <nav class="sub-links" aria-label="Vehicle workspace views">
-                {''.join(render_subtab_link("vehicles", view_name, label, active_vehicle_view) for view_name, label in visible_vehicle_views_for_user(user))}
+                {vehicle_workflow_nav}
               </nav>
+              {vehicle_action_panel}
             </section>
 
             <section class="{tab_panel_classes('vehicles', active_tab, 'panel')}" id="tracking-status" data-tab-section="vehicles" {"hidden" if active_tab != "vehicles" or active_vehicle_view != "tracking" else ""}>
@@ -1797,6 +1845,62 @@ def render_notification_settings(user):
       <p class="muted full-span">Use the optional text-message field only if your phone carrier gives you an email-to-text address.</p>
       <button type="submit" class="primary-btn">Save notification settings</button>
     </form>
+    """
+
+
+def render_vehicle_action_panel(vehicles, selected_vehicle_id, active_tab, active_vehicle_view, owner_mode, vehicle_view_links):
+    if active_tab not in {"vehicles", "maintenance", "fuel", "alerts"}:
+        return ""
+    if not vehicles and not owner_mode:
+        return ""
+
+    selected_vehicle = next((vehicle for vehicle in vehicles if str(vehicle["id"]) == str(selected_vehicle_id)), None)
+    selected_label = (
+        f'{row_value(selected_vehicle, "name")} - {row_value(selected_vehicle, "plate")}'
+        if selected_vehicle
+        else ("No vehicles yet" if owner_mode and not vehicles else "Choose a vehicle")
+    )
+    form_html = (
+        f"""
+      <form method="get" action="/{active_tab}" class="vehicle-focus-form">
+        <label>
+          <span>Vehicle</span>
+          <select name="vehicle_id" required onchange="this.form.submit()">{render_vehicle_options(vehicles, selected_vehicle_id)}</select>
+        </label>
+        <p class="muted vehicle-focus-hint">Changing the vehicle updates this workspace automatically.</p>
+      </form>
+        """
+        if vehicles
+        else ""
+    )
+    helper_text = (
+        "Choose the vehicle first, then jump into fuel, maintenance, or alerts."
+        if vehicles
+        else "Add a vehicle here first, then use the rest of the workflow."
+    )
+    return f"""
+    <details class="panel vehicle-focus-panel">
+      <summary class="vehicle-focus-summary">
+        <span class="vehicle-focus-summary__label">
+          <span>Vehicle workflow</span>
+          <strong>Selected vehicle</strong>
+        </span>
+        <span class="vehicle-focus-summary__meta">
+          <span>{h(selected_label)}</span>
+          <span>{h("Open" if active_tab == "vehicles" else "Manage")}</span>
+        </span>
+      </summary>
+      <div class="vehicle-focus-panel__body">
+        {form_html}
+        <div class="vehicle-focus-current">
+          <strong>{h(selected_label)}</strong>
+          <span class="muted">{h(helper_text)}</span>
+        </div>
+        <nav class="sub-links" aria-label="Vehicle action options">
+          {vehicle_view_links}
+        </nav>
+      </div>
+    </details>
     """
 
 
