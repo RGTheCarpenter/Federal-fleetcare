@@ -1095,7 +1095,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
             )
             nav_links = "".join(
                 render_tab_link(tab_name, label, active_tab)
-                for tab_name, label in allowed_tabs_for_user(user)
+                for tab_name, label in visible_tabs_for_user(user)
             )
             stats_panel = (
                 f"""
@@ -1660,6 +1660,12 @@ def allowed_tabs_for_user(user):
         ("fuel", "Fuel"),
         ("alerts", "Alerts"),
     ]
+
+
+def visible_tabs_for_user(user):
+    if is_driver(user):
+        return [("vehicles", "Vehicles")]
+    return [("vehicles", "Vehicles"), ("drivers", "Drivers")]
 
 
 def normalize_tab_for_role(tab_name, user):
