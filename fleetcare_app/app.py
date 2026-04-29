@@ -1315,8 +1315,6 @@ class FleetCareHandler(BaseHTTPRequestHandler):
             {nav_links}
           </nav>
 
-          {vehicle_action_panel}
-
           {stats_panel}
           {alert_summary_section}
 
@@ -1331,6 +1329,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
               <nav class="sub-links" aria-label="Vehicle workspace views">
                 {vehicle_subtabs}
               </nav>
+              {vehicle_action_panel}
             </section>
 
             <section class="{tab_panel_classes('vehicles', active_tab, 'panel')}" id="tracking-status" data-tab-section="vehicles" {"hidden" if active_tab != "vehicles" or active_vehicle_view != "tracking" else ""}>
