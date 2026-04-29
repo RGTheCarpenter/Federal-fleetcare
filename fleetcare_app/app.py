@@ -1684,7 +1684,6 @@ def allowed_vehicle_views_for_user(user):
     return [
         ("state", "Current state"),
         ("tracking", "Tracking"),
-        ("add", "Add vehicle"),
         ("capture", "GPS capture"),
         ("trips", "Trips"),
         ("history", "History"),
@@ -1786,14 +1785,14 @@ def render_notification_settings(user):
 def render_vehicle_action_panel(vehicles, selected_vehicle_id, active_tab, owner_mode):
     if active_tab not in {"vehicles", "maintenance", "fuel", "alerts"}:
         return ""
-    if not vehicles:
+    if not vehicles and not owner_mode:
         return ""
 
     selected_vehicle = next((vehicle for vehicle in vehicles if str(vehicle["id"]) == str(selected_vehicle_id)), None)
     selected_label = (
         f'{row_value(selected_vehicle, "name")} - {row_value(selected_vehicle, "plate")}'
         if selected_vehicle
-        else "Choose a vehicle"
+        else ("No vehicles yet" if owner_mode and not vehicles else "Choose a vehicle")
     )
     allowed_actions = [("vehicles", "Vehicle workspace"), ("maintenance", "Maintenance"), ("fuel", "Fuel")]
     if owner_mode:
@@ -1801,6 +1800,29 @@ def render_vehicle_action_panel(vehicles, selected_vehicle_id, active_tab, owner
     action_links = "".join(
         f'<a class="sub-link{" is-active" if tab_name == active_tab else ""}" href="{section_url(tab_name, selected_vehicle_id=selected_vehicle_id)}">{h(label)}</a>'
         for tab_name, label in allowed_actions
+    )
+    form_html = (
+        f"""
+      <form method="get" action="/{active_tab}" class="vehicle-focus-form">
+        <label>
+          <span>Vehicle</span>
+          <select name="vehicle_id" required>{render_vehicle_options(vehicles, selected_vehicle_id)}</select>
+        </label>
+        <button type="submit" class="primary-btn">Use vehicle</button>
+      </form>
+        """
+        if vehicles
+        else ""
+    )
+    add_vehicle_link = (
+        f'<a class="sub-link" href="{section_url("vehicles", vehicle_view="add")}">Add a vehicle</a>'
+        if owner_mode
+        else ""
+    )
+    helper_text = (
+        "Choose the vehicle first, then jump into fuel, maintenance, or alerts."
+        if vehicles
+        else "Add a vehicle here first, then use the rest of the workflow."
     )
     return f"""
     <section class="panel vehicle-focus-panel">
@@ -1810,17 +1832,12 @@ def render_vehicle_action_panel(vehicles, selected_vehicle_id, active_tab, owner
           <h2>Selected vehicle</h2>
         </div>
       </div>
-      <form method="get" action="/{active_tab}" class="vehicle-focus-form">
-        <label>
-          <span>Vehicle</span>
-          <select name="vehicle_id" required>{render_vehicle_options(vehicles, selected_vehicle_id)}</select>
-        </label>
-        <button type="submit" class="primary-btn">Use vehicle</button>
-      </form>
+      {form_html}
       <div class="vehicle-focus-current">
         <strong>{h(selected_label)}</strong>
-        <span class="muted">Choose the vehicle first, then jump into fuel, maintenance, or alerts.</span>
+        <span class="muted">{h(helper_text)}</span>
       </div>
+      {f'<div class="vehicle-focus-shortcuts">{add_vehicle_link}</div>' if add_vehicle_link else ''}
       <nav class="sub-links" aria-label="Vehicle action options">
         {action_links}
       </nav>
