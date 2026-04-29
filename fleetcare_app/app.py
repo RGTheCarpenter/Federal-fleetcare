@@ -1135,7 +1135,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
             )
             vehicle_subtabs = "".join(
                 render_subtab_link("vehicles", view_name, label, active_vehicle_view)
-                for view_name, label in allowed_vehicle_views_for_user(user)
+                for view_name, label in visible_vehicle_views_for_user(user)
             )
             vehicle_add_panel = (
                 render_collapsible_panel(
@@ -1681,6 +1681,19 @@ def allowed_vehicle_views_for_user(user):
             ("capture", "GPS capture"),
             ("trips", "Trips"),
         ]
+    return [
+        ("state", "Current state"),
+        ("tracking", "Tracking"),
+        ("add", "Add vehicle"),
+        ("capture", "GPS capture"),
+        ("trips", "Trips"),
+        ("history", "History"),
+    ]
+
+
+def visible_vehicle_views_for_user(user):
+    if is_driver(user):
+        return allowed_vehicle_views_for_user(user)
     return [
         ("state", "Current state"),
         ("tracking", "Tracking"),
