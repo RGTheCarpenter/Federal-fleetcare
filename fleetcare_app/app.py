@@ -539,16 +539,20 @@ class FleetCareHandler(BaseHTTPRequestHandler):
 
     def handle_fuel_add(self, user, form):
         vehicle_id = int(form.get("vehicle_id") or 0)
-        odometer = int(form.get("odometer") or 0)
         gallons = float(form.get("gallons") or 0)
         liters = gallons_to_liters(gallons)
         total_cost = float(form.get("total_cost") or 0)
         price_per_liter = total_cost / liters if liters else 0
-        full_tank = 1 if form.get("full_tank") == "on" else 0
+        full_tank = 1 if str(form.get("full_tank") or "").lower() in {"on", "1", "true", "yes"} else 0
         scope_id = company_scope_user_id(user)
         return_vehicle_id = form.get("return_vehicle_id") or vehicle_id
 
         with get_connection() as connection:
+            vehicle_row = connection.execute(
+                "SELECT odometer FROM vehicles WHERE id = ? AND user_id = ?",
+                (vehicle_id, scope_id),
+            ).fetchone()
+            odometer = int(row_value(vehicle_row, "odometer", 0) or 0)
             connection.execute(
                 """
                 INSERT INTO fuel_logs
@@ -595,7 +599,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
         liters = gallons_to_liters(gallons)
         total_cost = float(form.get("total_cost") or 0)
         price_per_liter = total_cost / liters if liters else 0
-        full_tank = 1 if form.get("full_tank") == "on" else 0
+        full_tank = 1 if str(form.get("full_tank") or "").lower() in {"on", "1", "true", "yes"} else 0
         scope_id = company_scope_user_id(user)
         return_vehicle_id = form.get("return_vehicle_id") or vehicle_id
 
@@ -1947,12 +1951,8 @@ def render_fuel_form(vehicles, selected_vehicle_id=None):
       <input type="hidden" name="return_vehicle_id" value="{h(selected_vehicle_id or '')}">
       <label><span>Vehicle</span><select name="vehicle_id" required>{render_vehicle_options(vehicles, selected_vehicle_id)}</select></label>
       <label><span>Fill date</span><input type="date" name="fill_date" value="{date.today().isoformat()}" required></label>
-      <label><span>Odometer</span><input type="number" name="odometer" min="0" required></label>
       <label><span>Gallons</span><input type="number" name="gallons" min="0" step="0.01" required></label>
       <label><span>Total cost</span><input type="number" name="total_cost" min="0" step="0.01" required></label>
-      <label><span>Station</span><input type="text" name="station"></label>
-      <label class="checkbox-label"><input type="checkbox" name="full_tank" checked> Full tank fill</label>
-      <label class="full-span"><span>Notes</span><textarea name="notes" rows="3"></textarea></label>
       <button type="submit" class="primary-btn">Save fuel log</button>
     </form>
     """
@@ -2222,13 +2222,13 @@ def render_fuel_edit_box(item):
         <input type="hidden" name="fuel_id" value="{item['id']}">
         <input type="hidden" name="return_vehicle_id" value="{item['vehicle_id']}">
         <input type="hidden" name="vehicle_id" value="{item['vehicle_id']}">
+        <input type="hidden" name="odometer" value="{item['odometer']}">
+        <input type="hidden" name="station" value="{h(item['station'] or '')}">
+        <input type="hidden" name="notes" value="{h(item['notes'] or '')}">
+        <input type="hidden" name="full_tank" value="{'1' if item['full_tank'] else '0'}">
         <label><span>Fill date</span><input type="date" name="fill_date" value="{h(item['fill_date'])}" required></label>
-        <label><span>Odometer</span><input type="number" name="odometer" min="0" value="{item['odometer']}" required></label>
         <label><span>Gallons</span><input type="number" name="gallons" min="0" step="0.01" value="{gallons_value}" required></label>
         <label><span>Total cost</span><input type="number" name="total_cost" min="0" step="0.01" value="{item['total_cost']}" required></label>
-        <label><span>Station</span><input type="text" name="station" value="{h(item['station'] or '')}"></label>
-        <label class="checkbox-label"><input type="checkbox" name="full_tank" {"checked" if item['full_tank'] else ""}> Full tank fill</label>
-        <label class="full-span"><span>Notes</span><textarea name="notes" rows="3">{h(item['notes'] or '')}</textarea></label>
         <button type="submit" class="primary-btn">Save changes</button>
       </form>
       <form method="post" action="/fuel/delete" class="delete-form" onsubmit="return confirm('Delete this fuel log?');">
