@@ -1227,7 +1227,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 else ""
             )
             vehicles_list_panel = f"""
-            <section class="{tab_panel_classes('vehicles', active_tab, 'panel span-two')}" data-tab-section="vehicles" {"hidden" if active_tab != "vehicles" or active_vehicle_view != "overview" else ""}>
+            <section class="{tab_panel_classes('vehicles', active_tab, 'panel span-two')}" data-tab-section="vehicles" {"hidden" if active_tab != "vehicles" or active_vehicle_view != "state" else ""}>
               <div class="panel-header"><div><p class="section-kicker">Current state</p><h2>{'Assigned vehicles' if is_driver(user) else 'Vehicles'}</h2></div></div>
               <div class="stack-list">{render_vehicles(vehicles, can_manage=owner_mode)}</div>
             </section>
@@ -1333,7 +1333,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
               </nav>
             </section>
 
-            <section class="{tab_panel_classes('vehicles', active_tab, 'panel')}" id="tracking-status" data-tab-section="vehicles" {"hidden" if active_tab != "vehicles" or active_vehicle_view != "overview" else ""}>
+            <section class="{tab_panel_classes('vehicles', active_tab, 'panel')}" id="tracking-status" data-tab-section="vehicles" {"hidden" if active_tab != "vehicles" or active_vehicle_view != "tracking" else ""}>
               <div class="panel-header"><div><p class="section-kicker">Tracking</p><h2>Tracking status</h2></div></div>
               {render_tracking_status(active_trip, gps_logs)}
             </section>
@@ -1675,9 +1675,15 @@ def normalize_tab_for_role(tab_name, user):
 
 def allowed_vehicle_views_for_user(user):
     if is_driver(user):
-        return [("overview", "Overview"), ("capture", "GPS capture"), ("trips", "Trips")]
+        return [
+            ("state", "Current state"),
+            ("tracking", "Tracking"),
+            ("capture", "GPS capture"),
+            ("trips", "Trips"),
+        ]
     return [
-        ("overview", "Overview"),
+        ("state", "Current state"),
+        ("tracking", "Tracking"),
         ("add", "Add vehicle"),
         ("capture", "GPS capture"),
         ("trips", "Trips"),
@@ -1686,8 +1692,10 @@ def allowed_vehicle_views_for_user(user):
 
 
 def normalize_vehicle_view_for_role(view_name, user):
+    if view_name == "overview":
+        view_name = "state"
     allowed = {view for view, _label in allowed_vehicle_views_for_user(user)}
-    return view_name if view_name in allowed else "overview"
+    return view_name if view_name in allowed else "state"
 
 
 def assigned_vehicle_id_list(connection, user):
