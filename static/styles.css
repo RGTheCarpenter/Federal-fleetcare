@@ -674,7 +674,8 @@ textarea {
   display: none;
 }
 
-.tracking-status summary.tracking-dropdown {
+.tracking-status summary.tracking-dropdown,
+.vehicle-state-dropdown summary.tracking-dropdown {
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) auto;
   align-items: center;
@@ -691,22 +692,26 @@ textarea {
   order: 2;
 }
 
-.tracking-status summary.tracking-dropdown::-webkit-details-marker {
+.tracking-status summary.tracking-dropdown::-webkit-details-marker,
+.vehicle-state-dropdown summary.tracking-dropdown::-webkit-details-marker {
   display: none;
 }
 
-.tracking-status summary.tracking-dropdown::after {
+.tracking-status summary.tracking-dropdown::after,
+.vehicle-state-dropdown summary.tracking-dropdown::after {
   content: "▾";
   font-weight: 600;
   color: var(--muted);
   transition: transform 180ms ease;
 }
 
-.tracking-status[open] summary.tracking-dropdown::after {
+.tracking-status[open] summary.tracking-dropdown::after,
+.vehicle-state-dropdown[open] summary.tracking-dropdown::after {
   transform: rotate(180deg);
 }
 
-.tracking-status[open] .tracking-dropdown__hint::after {
+.tracking-status[open] .tracking-dropdown__hint::after,
+.vehicle-state-dropdown[open] .tracking-dropdown__hint::after {
   content: "Hide";
 }
 
@@ -745,6 +750,15 @@ textarea {
 .tracking-status__hero {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
+}
+
+.vehicle-state-dropdown {
+  display: grid;
+  gap: 10px;
+}
+
+.vehicle-state-dropdown:not([open]) .vehicle-state-dropdown__body {
+  display: none;
 }
 
 .tracking-grid {

@@ -1059,7 +1059,14 @@ class FleetCareHandler(BaseHTTPRequestHandler):
 
             alerts = collect_alerts(reminders, assignments)
             stats = build_stats(vehicles, maintenance, fuel_logs, reminders)
-            vehicle_action_panel = render_vehicle_action_panel(vehicles, selected_vehicle_id, active_tab, owner_mode)
+            vehicle_action_panel = render_vehicle_action_panel(
+                vehicles,
+                selected_vehicle_id,
+                active_tab,
+                active_vehicle_view,
+                owner_mode,
+                vehicle_view_links,
+            )
             mobile_reminders = json.dumps(build_mobile_reminders(reminders), separators=(",", ":"))
             trip_routes = json.dumps(build_trip_routes(trip_points), separators=(",", ":"))
             tracking_state = json.dumps(build_tracking_payload(active_trip, gps_logs), separators=(",", ":"))
@@ -1133,9 +1140,44 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 if owner_mode
                 else ""
             )
-            vehicle_subtabs = "".join(
+            vehicle_view_links = "".join(
                 render_subtab_link("vehicles", view_name, label, active_vehicle_view)
                 for view_name, label in visible_vehicle_views_for_user(user)
+            )
+            vehicle_workflow_links = []
+            if owner_mode:
+                vehicle_workflow_links.append(
+                    (
+                        section_url("vehicles", vehicle_view="add", selected_vehicle_id=selected_vehicle_id),
+                        "Add a vehicle",
+                        active_tab == "vehicles" and active_vehicle_view == "add",
+                    )
+                )
+            vehicle_workflow_links.extend(
+                [
+                    (
+                        section_url("maintenance", selected_vehicle_id=selected_vehicle_id),
+                        "Maintenance",
+                        active_tab == "maintenance",
+                    ),
+                    (
+                        section_url("fuel", selected_vehicle_id=selected_vehicle_id),
+                        "Fuel",
+                        active_tab == "fuel",
+                    ),
+                ]
+            )
+            if owner_mode:
+                vehicle_workflow_links.append(
+                    (
+                        section_url("alerts", selected_vehicle_id=selected_vehicle_id),
+                        "Alerts",
+                        active_tab == "alerts",
+                    )
+                )
+            vehicle_workflow_nav = "".join(
+                f'<a class="sub-link{" is-active" if is_active else ""}" href="{href}">{h(label)}</a>'
+                for href, label, is_active in vehicle_workflow_links
             )
             vehicle_add_panel = (
                 render_collapsible_panel(
@@ -1228,8 +1270,20 @@ class FleetCareHandler(BaseHTTPRequestHandler):
             )
             vehicles_list_panel = f"""
             <section class="{tab_panel_classes('vehicles', active_tab, 'panel span-two')}" data-tab-section="vehicles" {"hidden" if active_tab != "vehicles" or active_vehicle_view != "state" else ""}>
-              <div class="panel-header"><div><p class="section-kicker">Current state</p><h2>{'Assigned vehicles' if is_driver(user) else 'Vehicles'}</h2></div></div>
-              <div class="stack-list">{render_vehicles(vehicles, can_manage=owner_mode)}</div>
+              <details class="vehicle-state-dropdown">
+                <summary class="tracking-dropdown">
+                  <span class="tracking-dropdown__label">
+                    <span>Current state</span>
+                    <span>{'Assigned vehicles' if is_driver(user) else 'Vehicles'}</span>
+                  </span>
+                  <span class="tracking-dropdown__meta">
+                    <span>{len(vehicles)} vehicles</span>
+                    <span>Open</span>
+                  </span>
+                  <span class="tracking-dropdown__hint"></span>
+                </summary>
+                <div class="stack-list vehicle-state-dropdown__body">{render_vehicles(vehicles, can_manage=owner_mode)}</div>
+              </details>
             </section>
             """
             gps_history_panel = (
@@ -1327,7 +1381,7 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 </div>
               </div>
               <nav class="sub-links" aria-label="Vehicle workspace views">
-                {vehicle_subtabs}
+                {vehicle_workflow_nav}
               </nav>
               {vehicle_action_panel}
             </section>
@@ -1794,7 +1848,7 @@ def render_notification_settings(user):
     """
 
 
-def render_vehicle_action_panel(vehicles, selected_vehicle_id, active_tab, owner_mode):
+def render_vehicle_action_panel(vehicles, selected_vehicle_id, active_tab, active_vehicle_view, owner_mode, vehicle_view_links):
     if active_tab not in {"vehicles", "maintenance", "fuel", "alerts"}:
         return ""
     if not vehicles and not owner_mode:
@@ -1805,13 +1859,6 @@ def render_vehicle_action_panel(vehicles, selected_vehicle_id, active_tab, owner
         f'{row_value(selected_vehicle, "name")} - {row_value(selected_vehicle, "plate")}'
         if selected_vehicle
         else ("No vehicles yet" if owner_mode and not vehicles else "Choose a vehicle")
-    )
-    allowed_actions = [("vehicles", "Vehicle workspace"), ("maintenance", "Maintenance"), ("fuel", "Fuel")]
-    if owner_mode:
-        allowed_actions.append(("alerts", "Alerts"))
-    action_links = "".join(
-        f'<a class="sub-link{" is-active" if tab_name == active_tab else ""}" href="{section_url(tab_name, selected_vehicle_id=selected_vehicle_id)}">{h(label)}</a>'
-        for tab_name, label in allowed_actions
     )
     form_html = (
         f"""
@@ -1824,11 +1871,6 @@ def render_vehicle_action_panel(vehicles, selected_vehicle_id, active_tab, owner
       </form>
         """
         if vehicles
-        else ""
-    )
-    add_vehicle_link = (
-        f'<a class="sub-link" href="{section_url("vehicles", vehicle_view="add")}">Add a vehicle</a>'
-        if owner_mode
         else ""
     )
     helper_text = (
@@ -1854,9 +1896,8 @@ def render_vehicle_action_panel(vehicles, selected_vehicle_id, active_tab, owner
           <strong>{h(selected_label)}</strong>
           <span class="muted">{h(helper_text)}</span>
         </div>
-        {f'<div class="vehicle-focus-shortcuts">{add_vehicle_link}</div>' if add_vehicle_link else ''}
         <nav class="sub-links" aria-label="Vehicle action options">
-          {action_links}
+          {vehicle_view_links}
         </nav>
       </div>
     </details>
