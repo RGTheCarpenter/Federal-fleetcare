@@ -1838,23 +1838,29 @@ def render_vehicle_action_panel(vehicles, selected_vehicle_id, active_tab, owner
         else "Add a vehicle here first, then use the rest of the workflow."
     )
     return f"""
-    <section class="panel vehicle-focus-panel">
-      <div class="panel-header">
-        <div>
-          <p class="section-kicker">Vehicle workflow</p>
-          <h2>Selected vehicle</h2>
+    <details class="panel vehicle-focus-panel">
+      <summary class="vehicle-focus-summary">
+        <span class="vehicle-focus-summary__label">
+          <span>Vehicle workflow</span>
+          <strong>Selected vehicle</strong>
+        </span>
+        <span class="vehicle-focus-summary__meta">
+          <span>{h(selected_label)}</span>
+          <span>{h("Open" if active_tab == "vehicles" else "Manage")}</span>
+        </span>
+      </summary>
+      <div class="vehicle-focus-panel__body">
+        {form_html}
+        <div class="vehicle-focus-current">
+          <strong>{h(selected_label)}</strong>
+          <span class="muted">{h(helper_text)}</span>
         </div>
+        {f'<div class="vehicle-focus-shortcuts">{add_vehicle_link}</div>' if add_vehicle_link else ''}
+        <nav class="sub-links" aria-label="Vehicle action options">
+          {action_links}
+        </nav>
       </div>
-      {form_html}
-      <div class="vehicle-focus-current">
-        <strong>{h(selected_label)}</strong>
-        <span class="muted">{h(helper_text)}</span>
-      </div>
-      {f'<div class="vehicle-focus-shortcuts">{add_vehicle_link}</div>' if add_vehicle_link else ''}
-      <nav class="sub-links" aria-label="Vehicle action options">
-        {action_links}
-      </nav>
-    </section>
+    </details>
     """
 
 
