@@ -1059,14 +1059,6 @@ class FleetCareHandler(BaseHTTPRequestHandler):
 
             alerts = collect_alerts(reminders, assignments)
             stats = build_stats(vehicles, maintenance, fuel_logs, reminders)
-            vehicle_action_panel = render_vehicle_action_panel(
-                vehicles,
-                selected_vehicle_id,
-                active_tab,
-                active_vehicle_view,
-                owner_mode,
-                vehicle_view_links,
-            )
             mobile_reminders = json.dumps(build_mobile_reminders(reminders), separators=(",", ":"))
             trip_routes = json.dumps(build_trip_routes(trip_points), separators=(",", ":"))
             tracking_state = json.dumps(build_tracking_payload(active_trip, gps_logs), separators=(",", ":"))
@@ -1178,6 +1170,14 @@ class FleetCareHandler(BaseHTTPRequestHandler):
             vehicle_workflow_nav = "".join(
                 f'<a class="sub-link{" is-active" if is_active else ""}" href="{href}">{h(label)}</a>'
                 for href, label, is_active in vehicle_workflow_links
+            )
+            vehicle_action_panel = render_vehicle_action_panel(
+                vehicles,
+                selected_vehicle_id,
+                active_tab,
+                active_vehicle_view,
+                owner_mode,
+                vehicle_view_links,
             )
             vehicle_add_panel = (
                 render_collapsible_panel(
