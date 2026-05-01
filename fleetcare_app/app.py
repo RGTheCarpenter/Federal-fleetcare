@@ -552,7 +552,10 @@ class FleetCareHandler(BaseHTTPRequestHandler):
                 "SELECT odometer FROM vehicles WHERE id = ? AND user_id = ?",
                 (vehicle_id, scope_id),
             ).fetchone()
-            odometer = int(row_value(vehicle_row, "odometer", 0) or 0)
+            if not vehicle_row:
+                return self.redirect(section_url("fuel", selected_vehicle_id=return_vehicle_id, anchor="fuel"))
+
+            odometer = int(row_value(vehicle_row, "odometer") or 0)
             connection.execute(
                 """
                 INSERT INTO fuel_logs
