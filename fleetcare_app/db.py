@@ -52,7 +52,12 @@ class ConnectionWrapper:
 
     def execute(self, query, params=()):
         cursor = self.connection.cursor()
-        cursor.execute(_rewrite_query(query, self.engine), params)
+        try:
+            cursor.execute(_rewrite_query(query, self.engine), params)
+        except sqlite3.OperationalError as exc:
+            if self.engine == "sqlite" and "duplicate column name" in str(exc).lower():
+                return CursorWrapper(cursor)
+            raise
         return CursorWrapper(cursor)
 
 
@@ -280,7 +285,7 @@ def migration_statements(engine):
 
 def _rewrite_query(query, engine):
     if engine == "sqlite":
-        return query
+        return query.replace("ADD COLUMN IF NOT EXISTS", "ADD COLUMN")
 
     pieces = []
     in_single_quote = False

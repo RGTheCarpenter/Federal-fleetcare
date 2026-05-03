@@ -24,6 +24,7 @@ APP_PUBLIC_URL = os.environ.get("APP_PUBLIC_URL", "https://fleetcare-web.onrende
 APP_BRAND = "RG Fleet"
 APP_SHORT_NAME = "RG Fleet"
 APP_TAGLINE = "Company fleet command"
+PRIVACY_CONTACT_EMAIL = os.environ.get("SUPPORT_EMAIL", "garciaswoodworks7@gmail.com").strip()
 LITERS_PER_GALLON = 3.78541
 
 
@@ -45,6 +46,8 @@ class FleetCareHandler(BaseHTTPRequestHandler):
             return self.redirect("/vehicles" if self.current_user() else "/login")
         if path == "/health":
             return self.send_text("ok")
+        if path == "/privacy":
+            return self.render_privacy_page()
         if path == "/login":
             return self.render_auth_page("login")
         if path == "/register":
@@ -864,10 +867,52 @@ class FleetCareHandler(BaseHTTPRequestHandler):
               <button type="submit" class="primary-btn">{title}</button>
             </form>
             {alternate}
+            <p class="auth-switch"><a href="/privacy">Privacy policy</a></p>
           </div>
         </section>
         """
         return self.send_html(page(APP_BRAND, content))
+
+    def render_privacy_page(self):
+        content = f"""
+        <section class="page-shell legal-page">
+          <div class="panel legal-panel">
+            {render_brand_lockup(compact=True)}
+            <p class="kicker">Privacy Policy</p>
+            <h1>Privacy Policy for {h(APP_BRAND)}</h1>
+            <p class="muted">Last updated: May 3, 2026</p>
+
+            <h2>Overview</h2>
+            <p>{h(APP_BRAND)} is a fleet management application used to manage vehicles, maintenance, fuel records, trips, GPS information, alerts, assignments, and reports.</p>
+
+            <h2>Information We Collect</h2>
+            <p>{h(APP_BRAND)} may collect account information such as name, email address, login details, vehicle records, maintenance records, fuel records, trip information, GPS or location-related fleet data, reports, and app activity needed to provide the service.</p>
+
+            <h2>How We Use Information</h2>
+            <p>We use this information to provide fleet management features, maintain user accounts, display fleet records, improve app functionality, support users, and help authorized users manage business operations.</p>
+
+            <h2>Information Sharing</h2>
+            <p>We do not sell personal information. Information may be shared only with authorized users of the same organization, service providers needed to operate the app, or when required by law.</p>
+
+            <h2>Data Security</h2>
+            <p>We use reasonable security measures to protect app data. No method of electronic storage or transmission is 100% secure.</p>
+
+            <h2>Data Retention</h2>
+            <p>We retain information as needed to provide the service, comply with legal obligations, resolve disputes, and maintain business records.</p>
+
+            <h2>Children</h2>
+            <p>{h(APP_BRAND)} is intended for business use and is not directed to children.</p>
+
+            <h2>Contact</h2>
+            <p>For privacy questions, contact us at <a href="mailto:{h(PRIVACY_CONTACT_EMAIL)}">{h(PRIVACY_CONTACT_EMAIL)}</a>.</p>
+
+            <div class="hero-actions">
+              <a class="ghost-btn" href="/login">Back to sign in</a>
+            </div>
+          </div>
+        </section>
+        """
+        return self.send_html(page(f"{APP_BRAND} Privacy Policy", content))
 
     def render_dashboard(self, route, forced_tab=None):
         user = self.require_user()
