@@ -1,6 +1,6 @@
 {
   "appId": "com.rgthecarpenter.federalfleetcare",
-  "appName": "FleetCare Mobile",
+  "appName": "RG Fleet",
   "webDir": "static-capacitor-shell",
   "server": {
     "url": "https://fleetcare-web.onrender.com",
