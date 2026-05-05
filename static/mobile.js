@@ -116,6 +116,49 @@ function bindShareButton() {
   });
 }
 
+function bindPdfDownloads() {
+  const forms = document.querySelectorAll("form[action='/reports/fleet.pdf'], form[action$='/reports/fleet.pdf']");
+  if (!forms.length) {
+    return;
+  }
+
+  for (const form of forms) {
+    form.addEventListener("submit", async (event) => {
+      const browserPlugin = window.Capacitor?.Plugins?.Browser;
+      const isNativeApp = !!window.Capacitor?.isNativePlatform?.();
+      if (!browserPlugin?.open || !isNativeApp) {
+        return;
+      }
+
+      event.preventDefault();
+      const submitButton = form.querySelector("button[type='submit']");
+      const originalText = submitButton?.textContent || "Download PDF";
+      if (submitButton) {
+        submitButton.disabled = true;
+        submitButton.textContent = "Opening PDF...";
+      }
+
+      try {
+        const url = new URL(form.action, window.location.origin);
+        const params = new URLSearchParams(new FormData(form));
+        for (const [key, value] of params.entries()) {
+          if (String(value).trim()) {
+            url.searchParams.append(key, value);
+          }
+        }
+        await browserPlugin.open({ url: url.toString() });
+      } catch (error) {
+        window.alert("RG Fleet could not open the PDF report. Please try again.");
+      } finally {
+        if (submitButton) {
+          submitButton.disabled = false;
+          submitButton.textContent = originalText;
+        }
+      }
+    });
+  }
+}
+
 function populateGpsFields(form, coords) {
   const latitude = form.querySelector("input[name='latitude']");
   const longitude = form.querySelector("input[name='longitude']");
@@ -391,6 +434,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   setTrackingMessage();
   await bindEncodedUploads();
   bindShareButton();
+  bindPdfDownloads();
   bindLocationAccessButton();
   bindGpsCapture();
   bindAutoTripLogging();
